@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "mds-work", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 }
+    { "name": "mds-work-app", "runtimeExecutable": "node", "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"], "port": 3000 }
   ]
 }

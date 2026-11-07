@@ -613,12 +613,17 @@ Gestionale per attività con clienti, abbonamenti e prenotazioni.
 - Report incassi mensili
 `;
 
-export function seedDB(now: number): DB {
+/** demo=false: dashboard vuota (usata online, al primo avvio su Supabase). */
+export function seedDB(now: number, demo = true): DB {
   const db: DB = {
     projects: [], tasks: [], agents: [], requests: [], approvals: [], logs: [], payments: [], inbox: [], vault: [], vaultMeta: null, library: [],
     meta: { seed: 1337, version: 1 },
   };
   const ago = (min: number) => now - min * 60_000;
+  if (!demo) {
+    db.library.push({ id: uid("lib_"), name: "Gestionale prenotazioni (base)", kind: "management", text: GYM_BP, createdAt: now });
+    return db;
+  }
 
   const rossi = createProject(db, { name: "Studio Rossi", client: "Studio Legale Rossi", description: "Sito vetrina elegante e autorevole per studio legale", kind: "website", deadline: isoDay(now, 12), price: 1800, status: "active", templateId: "editorial-lux" }, ago(60 * 24 * 9));
   const fit = createProject(db, { name: "FitZone", client: "FitZone ASD", description: "Gestionale palestra: soci, abbonamenti, corsi e prenotazioni", kind: "management", deadline: isoDay(now, 25), price: 3500, status: "active", templateId: "aurora-glass" }, ago(60 * 24 * 15));

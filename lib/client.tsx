@@ -22,6 +22,10 @@ export function DBProvider({ children }: { children: React.ReactNode }) {
     const mine = ++seq.current;
     try {
       const r = await fetch("/api/state", { cache: "no-store" });
+      if (r.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Errore");
       if (mine === seq.current) {

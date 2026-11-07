@@ -1,10 +1,15 @@
 import { advance } from "@/lib/engine";
-import { assertLocal, loadDB, saveDB } from "@/lib/server/store";
+import { loadDB, requireOwner, saveDB } from "@/lib/server/store";
 
 export async function GET(req: Request) {
-  const denied = assertLocal(req);
+  const denied = await requireOwner(req);
   if (denied) return denied;
-  const db = loadDB();
-  if (advance(db, Date.now())) saveDB(db);
-  return Response.json(db, { headers: { "Cache-Control": "no-store" } });
+  try {
+    const db = await loadDB();
+    if (advance(db, Date.now())) await saveDB(db);
+    return Response.json(db, { headers: { "Cache-Control": "no-store" } });
+  } catch (e) {
+    console.error("[state]", e);
+    return Response.json({ error: "Database non raggiungibile" }, { status: 503 });
+  }
 }

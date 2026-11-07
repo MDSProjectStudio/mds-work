@@ -42,3 +42,5 @@ next-env.d.ts
 
 # local data (vault ciphertext, projects)
 /.data
+
+!.env.local.example

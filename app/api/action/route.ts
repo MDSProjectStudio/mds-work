@@ -1,5 +1,5 @@
 import { advance, reduce } from "@/lib/engine";
-import { assertLocal, loadDB, saveDB } from "@/lib/server/store";
+import { loadDB, requireOwner, saveDB } from "@/lib/server/store";
 import type { Action } from "@/lib/types";
 
 const ALLOWED = new Set<Action["type"]>([
@@ -9,7 +9,7 @@ const ALLOWED = new Set<Action["type"]>([
 ]);
 
 export async function POST(req: Request) {
-  const denied = assertLocal(req);
+  const denied = await requireOwner(req);
   if (denied) return denied;
   let action: Action;
   try {
@@ -22,9 +22,9 @@ export async function POST(req: Request) {
   }
   const now = Date.now();
   try {
-    const next = reduce(loadDB(), action, now);
+    const next = reduce(await loadDB(), action, now);
     advance(next, now);
-    saveDB(next);
+    await saveDB(next);
     return Response.json(next, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[action]", action.type, e);

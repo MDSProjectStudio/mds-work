@@ -5,7 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
-import { Bell, FolderKanban, Inbox, KeyRound, Library, Menu, Plus, Search, ShieldCheck, Sun, Wallet, X } from "lucide-react";
+import { Bell, FolderKanban, Inbox, KeyRound, Library, LogOut, Menu, Plus, Search, ShieldCheck, Sun, Wallet, X } from "lucide-react";
+import { authEnabled } from "@/lib/supabase/config";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 import { useDB } from "@/lib/client";
 import { money, pendingApprovals } from "@/lib/selectors";
 import { ProjectDot } from "./ui";
@@ -159,6 +161,17 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
           ))}
         </div>
       </div>
+      {authEnabled && (
+        <button
+          className="mx-2.5 mb-2.5 flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-[12.5px] text-muted transition hover:bg-white/[0.04] hover:text-fg"
+          onClick={async () => {
+            await supabaseBrowser().auth.signOut();
+            window.location.href = "/login";
+          }}
+        >
+          <LogOut size={14} /> Esci
+        </button>
+      )}
     </div>
   );
 }
