@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mds/task-state",
+  "title": "Stato di un task MDS (.mds/state/current-task.json)",
+  "type": "object",
+  "required": ["id", "title", "status", "classification", "nodes", "updated_at"],
+  "properties": {
+    "id": { "type": "string", "description": "es. T-2026-11-07-01" },
+    "title": { "type": "string" },
+    "request": { "type": "string", "description": "richiesta originale del titolare, sintetizzata" },
+    "status": { "enum": ["planning", "awaiting_approval", "in_progress", "verifying", "blocked", "done", "abandoned"] },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "classification": { "$ref": "#/$defs/classification" },
+    "approvals": {
+      "type": "array",
+      "items": { "type": "object", "required": ["what", "status"], "properties": { "what": { "type": "string" }, "status": { "enum": ["pending", "granted", "denied"] }, "at": { "type": "string" } } }
+    },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "definition_of_done": { "type": "array", "items": { "type": "string" } },
+    "qa_cycles": { "type": "integer", "minimum": 0 },
+    "notes": { "type": "string" }
+  },
+  "$defs": {
+    "classification": {
+      "type": "object",
+      "required": ["level", "scope", "risk", "domains", "reversibility", "verification"],
+      "properties": {
+        "level": { "enum": ["TRIVIAL", "STANDARD", "COMPLEX", "HIGH_RISK"] },
+        "scope": { "type": "string", "description": "area e ampiezza della modifica" },
+        "risk": { "enum": ["low", "medium", "high", "critical"] },
+        "domains": { "type": "array", "items": { "enum": ["ui", "frontend", "backend", "api", "database", "auth", "payments", "mobile", "game", "seo", "copy", "devops", "security", "docs"] } },
+        "parallelizability": { "enum": ["none", "partial", "high"] },
+        "reversibility": { "enum": ["trivial", "git-revert", "needs-migration-rollback", "irreversible"] },
+        "verification": { "type": "array", "items": { "type": "string" }, "description": "es. lint, types, unit, build, browser, visual, a11y, security, query" },
+        "estimated_context": { "enum": ["small", "medium", "large"] },
+        "required_tools": { "type": "array", "items": { "type": "string" } },
+        "required_skills": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "owner", "dependencies", "expected_output", "success_criteria", "verification", "status"],
+      "properties": {
+        "id": { "type": "string", "description": "es. N1" },
+        "owner": { "type": "string", "description": "atlas | mds-<agente>" },
+        "dependencies": { "type": "array", "items": { "type": "string" } },
+        "inputs": { "type": "array", "items": { "type": "string" } },
+        "expected_output": { "type": "string" },
+        "success_criteria": { "type": "array", "items": { "type": "string" } },
+        "verification": { "type": "array", "items": { "type": "string" } },
+        "risk": { "enum": ["low", "medium", "high", "critical"] },
+        "status": { "enum": ["pending", "in_progress", "done", "failed", "skipped"] },
+        "evidence": { "type": "array", "items": { "type": "string" }, "description": "artifact verificabili: comandi eseguiti con esito, file, screenshot, query" }
+      }
+    }
+  }
+}

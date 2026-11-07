@@ -50,3 +50,7 @@ next-env.d.ts
 
 # build alternative (test offline)
 /.next-*
+
+# risultati delle eval (locali)
+/kit/evals/results/
+/kit/evals/fixtures/

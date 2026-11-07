@@ -2,47 +2,305 @@
   "_info": "Arsenale verificato del team MDS. Plugin dal marketplace ufficiale Anthropic (anthropics/claude-plugins-official), verificati il 2026-11-07. Si attivano per progetto in base al tipo, cosi non consumano dove non servono.",
   "marketplace": "claude-plugins-official",
   "plugins": {
-    "frontend-design": { "what": "Interfacce di livello premium, evita l'estetica 'fatta dall'AI'", "roles": ["design", "frontend"] },
-    "figma": { "what": "Legge file Figma, token e componenti e li porta nel codice", "roles": ["design", "frontend"], "optional": true },
-    "canva": { "what": "Grafiche social, presentazioni e materiali per il cliente", "roles": ["design"], "optional": true },
-    "playwright": { "what": "Apre il browser vero: screenshot, click, test end-to-end", "roles": ["qa", "design", "frontend"] },
-    "chrome-devtools-mcp": { "what": "Ispeziona Chrome dal vivo: performance, console, rete", "roles": ["qa", "frontend", "seo"] },
-    "modern-web-guidance": { "what": "Buone pratiche web aggiornate", "roles": ["frontend"] },
-    "typescript-lsp": { "what": "Navigazione intelligente del codice TS/JS: meno file letti, meno consumo", "roles": ["frontend", "backend", "esploratore"] },
-    "context7": { "what": "Documentazione aggiornata di ogni libreria, niente codice inventato", "roles": ["frontend", "backend", "mobile", "architetto"] },
-    "supabase": { "what": "Database, auth e storage Supabase", "roles": ["backend", "database"] },
-    "prisma": { "what": "Postgres, schema e migrazioni con Prisma", "roles": ["database"], "optional": true },
-    "stripe": { "what": "Pagamenti, abbonamenti e webhook Stripe", "roles": ["backend"] },
-    "resend": { "what": "Email transazionali", "roles": ["backend"], "optional": true },
-    "sentry": { "what": "Errori in produzione collegati al codice", "roles": ["devops", "qa", "backend"], "optional": true },
-    "vercel": { "what": "Deploy, log e variabili d'ambiente su Vercel", "roles": ["devops"] },
-    "github": { "what": "Repo, issue e pull request", "roles": ["devops"] },
-    "commit-commands": { "what": "Commit, push e PR con un comando", "roles": ["devops"] },
-    "code-review": { "what": "Revisione multi-agente delle modifiche con filtro dei falsi allarmi", "roles": ["qa"] },
-    "security-guidance": { "what": "Controllo di sicurezza del codice generato", "roles": ["qa", "backend"] },
-    "expo": { "what": "App React Native con Expo: skill + simulatori", "roles": ["mobile"] },
-    "revenuecat": { "what": "Abbonamenti in-app", "roles": ["mobile"], "optional": true },
-    "unity": { "what": "Sviluppo giochi in Unity", "roles": ["game"] },
-    "posthog": { "what": "Analytics, funnel ed esperimenti", "roles": ["seo"], "optional": true },
-    "feature-dev": { "what": "Flusso guidato per sviluppare funzionalita complesse", "roles": ["architetto"] },
-    "superpowers": { "what": "Pianificazione, TDD e debug sistematico", "roles": ["architetto", "qa"], "optional": true },
-    "claude-md-management": { "what": "Mantiene ordinato il CLAUDE.md del progetto", "roles": ["mappa"] },
-    "session-report": { "what": "Report di quanto consumi per sessione", "roles": ["capo"], "optional": true }
+    "frontend-design": {
+      "what": "Interfacce di livello premium, evita l'estetica 'fatta dall'AI'",
+      "roles": [
+        "design",
+        "frontend"
+      ]
+    },
+    "figma": {
+      "what": "Legge file Figma, token e componenti e li porta nel codice",
+      "roles": [
+        "design",
+        "frontend"
+      ],
+      "optional": true
+    },
+    "canva": {
+      "what": "Grafiche social, presentazioni e materiali per il cliente",
+      "roles": [
+        "design"
+      ],
+      "optional": true
+    },
+    "playwright": {
+      "what": "Apre il browser vero: screenshot, click, test end-to-end",
+      "roles": [
+        "qa",
+        "design",
+        "frontend",
+        "backend"
+      ]
+    },
+    "chrome-devtools-mcp": {
+      "what": "Ispeziona Chrome dal vivo: performance, console, rete",
+      "roles": [
+        "qa",
+        "frontend",
+        "design",
+        "seo",
+        "backend"
+      ]
+    },
+    "modern-web-guidance": {
+      "what": "Buone pratiche web aggiornate",
+      "roles": [
+        "frontend"
+      ]
+    },
+    "typescript-lsp": {
+      "what": "Navigazione intelligente del codice TS/JS: meno file letti, meno consumo",
+      "roles": [
+        "frontend",
+        "backend",
+        "esploratore"
+      ]
+    },
+    "context7": {
+      "what": "Documentazione aggiornata di ogni libreria, niente codice inventato",
+      "roles": [
+        "frontend",
+        "backend",
+        "mobile",
+        "architetto"
+      ]
+    },
+    "supabase": {
+      "what": "Database, auth e storage Supabase",
+      "roles": [
+        "backend",
+        "database"
+      ]
+    },
+    "prisma": {
+      "what": "Postgres, schema e migrazioni con Prisma",
+      "roles": [
+        "database"
+      ],
+      "optional": true
+    },
+    "stripe": {
+      "what": "Pagamenti, abbonamenti e webhook Stripe",
+      "roles": [
+        "backend"
+      ]
+    },
+    "resend": {
+      "what": "Email transazionali",
+      "roles": [
+        "backend"
+      ],
+      "optional": true
+    },
+    "sentry": {
+      "what": "Errori in produzione collegati al codice",
+      "roles": [
+        "devops",
+        "qa",
+        "backend"
+      ],
+      "optional": true
+    },
+    "vercel": {
+      "what": "Deploy, log e variabili d'ambiente su Vercel",
+      "roles": [
+        "devops"
+      ]
+    },
+    "github": {
+      "what": "Repo, issue e pull request",
+      "roles": [
+        "devops"
+      ]
+    },
+    "commit-commands": {
+      "what": "Commit, push e PR con un comando",
+      "roles": [
+        "devops"
+      ]
+    },
+    "code-review": {
+      "what": "Revisione multi-agente delle modifiche con filtro dei falsi allarmi",
+      "roles": [
+        "qa"
+      ]
+    },
+    "security-guidance": {
+      "what": "Controllo di sicurezza del codice generato",
+      "roles": [
+        "qa",
+        "backend"
+      ]
+    },
+    "expo": {
+      "what": "App React Native con Expo: skill + simulatori",
+      "roles": [
+        "mobile"
+      ]
+    },
+    "revenuecat": {
+      "what": "Abbonamenti in-app",
+      "roles": [
+        "mobile"
+      ],
+      "optional": true
+    },
+    "unity": {
+      "what": "Sviluppo giochi in Unity",
+      "roles": [
+        "game"
+      ]
+    },
+    "posthog": {
+      "what": "Analytics, funnel ed esperimenti",
+      "roles": [
+        "seo"
+      ],
+      "optional": true
+    },
+    "feature-dev": {
+      "what": "Flusso guidato per sviluppare funzionalita complesse",
+      "roles": [
+        "architetto"
+      ]
+    },
+    "superpowers": {
+      "what": "Pianificazione, TDD e debug sistematico",
+      "roles": [
+        "architetto",
+        "qa"
+      ],
+      "optional": true
+    },
+    "claude-md-management": {
+      "what": "Mantiene ordinato il CLAUDE.md del progetto",
+      "roles": [
+        "mappa"
+      ]
+    },
+    "session-report": {
+      "what": "Report di quanto consumi per sessione",
+      "roles": [
+        "capo"
+      ],
+      "optional": true
+    }
   },
   "byKind": {
-    "website": ["frontend-design", "playwright", "chrome-devtools-mcp", "context7", "typescript-lsp", "vercel", "github", "commit-commands", "code-review", "security-guidance"],
-    "ecommerce": ["frontend-design", "playwright", "chrome-devtools-mcp", "context7", "typescript-lsp", "supabase", "stripe", "vercel", "github", "commit-commands", "code-review", "security-guidance"],
-    "management": ["frontend-design", "playwright", "context7", "typescript-lsp", "supabase", "vercel", "github", "commit-commands", "code-review", "security-guidance", "feature-dev"],
-    "webapp": ["frontend-design", "playwright", "chrome-devtools-mcp", "context7", "typescript-lsp", "supabase", "stripe", "vercel", "github", "commit-commands", "code-review", "security-guidance", "feature-dev"],
-    "mobile": ["frontend-design", "expo", "context7", "typescript-lsp", "supabase", "github", "commit-commands", "code-review", "security-guidance"],
-    "automation": ["context7", "typescript-lsp", "supabase", "github", "commit-commands", "code-review", "security-guidance"],
-    "game": ["unity", "context7", "github", "commit-commands", "code-review"]
+    "website": [
+      "frontend-design",
+      "playwright",
+      "chrome-devtools-mcp",
+      "context7",
+      "typescript-lsp",
+      "vercel",
+      "github",
+      "commit-commands",
+      "code-review",
+      "security-guidance"
+    ],
+    "ecommerce": [
+      "frontend-design",
+      "playwright",
+      "chrome-devtools-mcp",
+      "context7",
+      "typescript-lsp",
+      "supabase",
+      "stripe",
+      "vercel",
+      "github",
+      "commit-commands",
+      "code-review",
+      "security-guidance"
+    ],
+    "management": [
+      "frontend-design",
+      "playwright",
+      "chrome-devtools-mcp",
+      "context7",
+      "typescript-lsp",
+      "supabase",
+      "vercel",
+      "github",
+      "commit-commands",
+      "code-review",
+      "security-guidance",
+      "feature-dev"
+    ],
+    "webapp": [
+      "frontend-design",
+      "playwright",
+      "chrome-devtools-mcp",
+      "context7",
+      "typescript-lsp",
+      "supabase",
+      "stripe",
+      "vercel",
+      "github",
+      "commit-commands",
+      "code-review",
+      "security-guidance",
+      "feature-dev"
+    ],
+    "mobile": [
+      "frontend-design",
+      "expo",
+      "context7",
+      "typescript-lsp",
+      "supabase",
+      "github",
+      "commit-commands",
+      "code-review",
+      "security-guidance"
+    ],
+    "automation": [
+      "context7",
+      "typescript-lsp",
+      "supabase",
+      "github",
+      "commit-commands",
+      "code-review",
+      "security-guidance"
+    ],
+    "game": [
+      "unity",
+      "context7",
+      "github",
+      "commit-commands",
+      "code-review"
+    ]
   },
   "community": [
-    { "name": "Roblox Studio MCP (ufficiale Roblox)", "url": "https://github.com/Roblox/studio-rust-mcp-server", "role": "game", "note": "Per lavorare dentro Roblox Studio" },
-    { "name": "Blender MCP", "url": "https://github.com/ahujasid/blender-mcp", "role": "game", "note": "Community, molto usato: modelli 3D per siti e giochi. Gira codice in Blender: usalo solo su progetti tuoi" },
-    { "name": "MCP for Unity (Coplay)", "url": "https://github.com/CoplayDev/unity-mcp", "role": "game", "note": "Alternativa community al plugin unity, controlla l'editor Unity" },
-    { "name": "shadcn MCP (ufficiale shadcn/ui)", "url": "https://ui.shadcn.com/docs/mcp", "role": "frontend", "note": "Sfoglia e installa componenti shadcn e dei registry" },
-    { "name": "wshobson/agents", "url": "https://github.com/wshobson/agents", "role": "tutti", "note": "Raccolta MIT molto popolare di sotto-agenti: solo come ispirazione, il kit MDS copre gia i ruoli" }
+    {
+      "name": "Roblox Studio MCP (ufficiale Roblox)",
+      "url": "https://github.com/Roblox/studio-rust-mcp-server",
+      "role": "game",
+      "note": "Per lavorare dentro Roblox Studio"
+    },
+    {
+      "name": "Blender MCP",
+      "url": "https://github.com/ahujasid/blender-mcp",
+      "role": "game",
+      "note": "Community, molto usato: modelli 3D per siti e giochi. Gira codice in Blender: usalo solo su progetti tuoi"
+    },
+    {
+      "name": "MCP for Unity (Coplay)",
+      "url": "https://github.com/CoplayDev/unity-mcp",
+      "role": "game",
+      "note": "Alternativa community al plugin unity, controlla l'editor Unity"
+    },
+    {
+      "name": "shadcn MCP (ufficiale shadcn/ui)",
+      "url": "https://ui.shadcn.com/docs/mcp",
+      "role": "frontend",
+      "note": "Sfoglia e installa componenti shadcn e dei registry"
+    },
+    {
+      "name": "wshobson/agents",
+      "url": "https://github.com/wshobson/agents",
+      "role": "tutti",
+      "note": "Raccolta MIT molto popolare di sotto-agenti: solo come ispirazione, il kit MDS copre gia i ruoli"
+    }
   ]
 }

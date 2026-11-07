@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mds/eval-case",
+  "title": "Caso di eval per un agente MDS (kit/evals/cases/<agente>.json → array di casi)",
+  "type": "object",
+  "required": ["id", "agent", "prompt", "expect"],
+  "properties": {
+    "id": { "type": "string" },
+    "agent": { "type": "string", "description": "atlas | mds-<agente>" },
+    "prompt": { "type": "string" },
+    "fixture": { "type": "string", "description": "progetto di prova in kit/evals/fixtures/ (opzionale)" },
+    "expect": {
+      "type": "object",
+      "description": "Controlli automatici sul risultato. Tutti opzionali.",
+      "properties": {
+        "level": { "enum": ["TRIVIAL", "STANDARD", "COMPLEX", "HIGH_RISK"] },
+        "agents_include": { "type": "array", "items": { "type": "string" } },
+        "agents_exclude": { "type": "array", "items": { "type": "string" } },
+        "max_agents": { "type": "integer" },
+        "approval_requested": { "type": "boolean" },
+        "sentinel_called": { "type": "boolean" },
+        "verdict": { "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL"] },
+        "output_keys": { "type": "array", "items": { "type": "string" } },
+        "must_mention": { "type": "array", "items": { "type": "string" } },
+        "must_not_mention": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "rubric": { "type": "array", "items": { "type": "string" }, "description": "criteri per valutazione umana o con modello giudice" }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mds/lesson",
+  "title": "Lezione imparata (voce di ~/.claude/mds/lessons/<agente>.yaml o .mds/lessons/project.yaml)",
+  "type": "object",
+  "required": ["id", "trigger", "desired_behavior", "applies_to", "confidence", "added_at"],
+  "properties": {
+    "id": { "type": "string", "description": "es. L-2026-11-07-01" },
+    "trigger": { "type": "string", "description": "in quale situazione si applica" },
+    "mistake": { "type": "string", "description": "cosa era stato fatto di sbagliato" },
+    "desired_behavior": { "type": "string", "description": "regola chiara e verificabile, al presente" },
+    "applies_to": { "type": "array", "items": { "type": "string" }, "description": "all | tipo progetto (website, ecommerce, management, webapp, mobile, automation, game) | dominio (ui, api, database…)" },
+    "confidence": { "enum": ["low", "medium", "high"], "description": "high = ribadita più volte dal titolare" },
+    "examples": { "type": "array", "items": { "type": "string" } },
+    "added_at": { "type": "string" },
+    "last_confirmed": { "type": "string" },
+    "superseded_by": { "type": "string" }
+  }
+}

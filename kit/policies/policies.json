@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "_info": "Policy applicate dall'hook mds-guard (PreToolUse). decision: ask = chiede conferma al titolare, deny = blocca. 'tools' e 'pattern' sono regex (case-insensitive); 'pattern' si applica al campo 'field' dell'input dello strumento (o a tutto l'input se assente). I progetti possono aggiungere regole in .mds/policies/*.json.",
+  "rules": [
+    {
+      "id": "git-force-push",
+      "tools": "^Bash$",
+      "field": "command",
+      "pattern": "git\\s+push\\b[^\\n]*(\\s--force(?!-with-lease)|\\s-f\\b|\\s--force-with-lease)",
+      "decision": "ask",
+      "reason": "Push forzato: può cancellare lavoro sul remoto."
+    },
+    {
+      "id": "git-reset-hard",
+      "tools": "^Bash$",
+      "field": "command",
+      "pattern": "git\\s+(reset\\s+--hard|clean\\s+-[a-z]*f|checkout\\s+--\\s+\\.|restore\\s+--source|branch\\s+-D\\b|push\\s+[^\\n]*--delete)",
+      "decision": "ask",
+      "reason": "Comando git che scarta modifiche o elimina rami."
+    },
+    {
+      "id": "rm-recursive",
+      "tools": "^Bash$",
+      "field": "command",
+      "pattern": "\\brm\\s+-[a-z]*(rf|fr)[a-z]*\\s+(?!(\\./)?(node_modules|\\.next|\\.next-[a-z]+|dist|build|coverage|\\.turbo|\\.cache)(/|\\s|$))",
+      "decision": "ask",
+      "reason": "Cancellazione ricorsiva fuori dalle cartelle di build."
+    },
+    {
+      "id": "prod-deploy",
+      "tools": "^Bash$",
+      "field": "command",
+      "pattern": "(vercel\\s+(deploy\\s+)?[^\\n]*--prod\\b|vercel\\s+promote|netlify\\s+deploy\\s+[^\\n]*--prod|firebase\\s+deploy|eas\\s+submit|npm\\s+publish|supabase\\s+functions\\s+deploy)",
+      "decision": "ask",
+      "reason": "Pubblicazione in produzione: serve l'ok del titolare."
+    },
+    {
+      "id": "infra-destroy",
+      "tools": "^Bash$",
+      "field": "command",
+      "pattern": "(terraform\\s+destroy|gh\\s+repo\\s+delete|vercel\\s+(rm|remove)\\b|supabase\\s+projects\\s+delete|stripe\\s+[^\\n]*\\bdelete\\b|docker\\s+system\\s+prune)",
+      "decision": "ask",
+      "reason": "Operazione che distrugge infrastruttura o risorse."
+    },
+    {
+      "id": "db-reset",
+      "tools": "^Bash$",
+      "field": "command",
+      "pattern": "(supabase\\s+db\\s+(reset|push)|prisma\\s+migrate\\s+reset|prisma\\s+db\\s+push[^\\n]*--accept-data-loss|drizzle-kit\\s+push)",
+      "decision": "ask",
+      "reason": "Comando che modifica o azzera un database."
+    },
+    {
+      "id": "sql-destructive",
+      "tools": "^(Bash|mcp__.*(supabase|postgres|sql|neon|prisma|database).*)$",
+      "pattern": "(\\bdrop\\s+(table|schema|database|view|function|policy|column|index)\\b|\\btruncate\\b|\\bdelete\\s+from\\s+[\\w\\.\"]+\\s*(;|$|\"|')|\\balter\\s+table\\b[^;]*\\bdrop\\b|\\b(grant|revoke)\\b[^;]*\\b(on|to|from)\\b|\\bdisable\\s+row\\s+level\\s+security\\b|\\bupdate\\s+[\\w\\.\"]+\\s+set\\b(?![^;]*\\bwhere\\b))",
+      "decision": "ask",
+      "reason": "SQL distruttivo o modifica permessi (DROP, TRUNCATE, DELETE/UPDATE senza WHERE, GRANT/REVOKE, RLS)."
+    },
+    {
+      "id": "mcp-migration",
+      "tools": "^mcp__.*(supabase|neon|prisma).*__(apply_migration|execute_sql|reset|delete|create_branch|merge_branch)",
+      "decision": "ask",
+      "reason": "Operazione sul database tramite MCP: conferma prima di eseguirla."
+    },
+    {
+      "id": "mcp-deploy",
+      "tools": "^mcp__.*(vercel|netlify|cloudflare|railway|render).*__(deploy|promote|delete|remove|rollback|create_project|update_env|set_env)",
+      "decision": "ask",
+      "reason": "Deploy o modifica di infrastruttura tramite MCP."
+    },
+    {
+      "id": "mcp-payments-write",
+      "tools": "^mcp__.*(stripe|paypal|revenuecat).*__(create|update|delete|cancel|refund|capture)",
+      "decision": "ask",
+      "reason": "Scrittura su sistema di pagamento."
+    },
+    {
+      "id": "mcp-github-write",
+      "tools": "^mcp__.*github.*__(merge|delete|push|create_or_update_file|update_branch)",
+      "decision": "ask",
+      "reason": "Scrittura diretta su GitHub (merge/push/cancellazione)."
+    },
+    {
+      "id": "env-write",
+      "tools": "^(Write|Edit|MultiEdit)$",
+      "field": "file_path",
+      "pattern": "(^|[\\\\/])\\.env(\\.[\\w-]+)*$",
+      "decision": "ask",
+      "reason": "Modifica di un file con segreti (.env).",
+      "except_field": "file_path",
+      "except": "\\.(example|sample|template)$"
+    },
+    {
+      "id": "env-read",
+      "tools": "^Read$",
+      "field": "file_path",
+      "pattern": "(^|[\\\\/])\\.env(\\.[\\w-]+)*$",
+      "decision": "ask",
+      "reason": "Lettura di un file con segreti: i valori finirebbero nel contesto.",
+      "except_field": "file_path",
+      "except": "\\.(example|sample|template)$"
+    },
+    {
+      "id": "secret-in-code",
+      "tools": "^(Write|Edit|MultiEdit)$",
+      "field": "content",
+      "pattern": "(sk_live_[0-9a-z]{16,}|rk_live_[0-9a-z]{16,}|sk-ant-[a-z0-9_-]{20,}|ghp_[a-z0-9]{30,}|github_pat_[a-z0-9_]{30,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sb_secret_[a-z0-9_-]{16,}|xox[bpa]-[a-z0-9-]{20,})",
+      "except_field": "file_path",
+      "except": "(^|[\\\\/])\\.env[^\\\\/]*$",
+      "decision": "deny",
+      "reason": "Segreto scritto nel codice: usa una variabile d'ambiente."
+    },
+    {
+      "id": "pipe-to-shell",
+      "tools": "^Bash$",
+      "field": "command",
+      "pattern": "(curl|wget|iwr|invoke-webrequest)[^|\\n]*\\|\\s*(sh|bash|zsh|iex|powershell|pwsh|node|python)\\b",
+      "decision": "ask",
+      "reason": "Esecuzione di script scaricati da internet."
+    },
+    {
+      "id": "global-install",
+      "tools": "^Bash$",
+      "field": "command",
+      "pattern": "(npm\\s+(i|install)\\s+[^\\n]*(-g|--global)\\b|claude\\s+mcp\\s+add|claude\\s+plugin\\s+(install|marketplace\\s+add)|npx\\s+skills\\s+add|uvx\\s+[a-z])",
+      "decision": "ask",
+      "reason": "Installazione globale o di skill/MCP/plugin: va prima verificata (skill mds-dependency-review)."
+    },
+    {
+      "id": "rocket-no-prod-git",
+      "agents": "^mds-devops$",
+      "tools": "^Bash$",
+      "field": "command",
+      "pattern": "git\\s+(push\\s+[^\\n]*\\b(main|master|production)\\b|merge\\s+[^\\n]*\\b(main|master)\\b)",
+      "decision": "ask",
+      "reason": "Rocket: push/merge sul ramo di produzione richiede conferma."
+    }
+  ],
+  "writeScopes": {
+    "_info": "Agenti che possono scrivere solo in certe cartelle (percorsi relativi al progetto, regex).",
+    "mds-esploratore": [],
+    "mds-architetto": [
+      "^docs/",
+      "^\\.mds/"
+    ],
+    "mds-mappa": [
+      "^docs/",
+      "^CLAUDE\\.md$"
+    ]
+  }
+}

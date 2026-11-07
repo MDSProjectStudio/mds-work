@@ -9,7 +9,8 @@
     "lint": "node node_modules/eslint/bin/eslint.js",
     "scan": "node scripts/scan-projects.mjs",
     "kit": "node scripts/kit.mjs",
-    "motore": "node scripts/motore.mjs"
+    "motore": "node scripts/motore.mjs",
+    "eval": "node scripts/eval.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

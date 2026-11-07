@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mds/agent-outputs",
+  "title": "Output strutturati degli agenti MDS",
+  "description": "Ogni agente chiude la sua risposta con un blocco ```json conforme alla definizione del proprio ruolo, preceduto da un riassunto in italiano di max 8 righe.",
+  "$defs": {
+    "esploratore": {
+      "type": "object",
+      "required": ["relevant_files", "entry_points", "flow", "dependencies", "risks", "unknowns"],
+      "properties": {
+        "relevant_files": { "type": "array", "items": { "type": "string", "description": "percorso:riga — perché" } },
+        "entry_points": { "type": "array", "items": { "type": "string" } },
+        "flow": { "type": "array", "items": { "type": "string" } },
+        "dependencies": { "type": "array", "items": { "type": "string" } },
+        "risks": { "type": "array", "items": { "type": "string" } },
+        "unknowns": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "architetto": {
+      "type": "object",
+      "required": ["plan", "decisions", "risks", "agents", "dependencies", "verification", "rollback"],
+      "properties": {
+        "plan": { "type": "array", "items": { "type": "object", "required": ["id", "owner", "task", "success_criteria"], "properties": { "id": { "type": "string" }, "owner": { "type": "string" }, "task": { "type": "string" }, "depends_on": { "type": "array", "items": { "type": "string" } }, "success_criteria": { "type": "array", "items": { "type": "string" } }, "size": { "enum": ["S", "M", "L"] } } } },
+        "decisions": { "type": "array", "items": { "type": "string", "description": "decisione o riferimento ADR" } },
+        "risks": { "type": "array", "items": { "type": "string" } },
+        "agents": { "type": "array", "items": { "type": "string" } },
+        "dependencies": { "type": "array", "items": { "type": "string" } },
+        "verification": { "type": "array", "items": { "type": "string" } },
+        "rollback": { "type": "string" },
+        "needs_approval": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "implementer": {
+      "type": "object",
+      "required": ["changes", "files", "tests", "risks", "remaining"],
+      "properties": {
+        "changes": { "type": "array", "items": { "type": "string" } },
+        "files": { "type": "array", "items": { "type": "string" } },
+        "tests": { "type": "array", "items": { "type": "object", "required": ["command", "result"], "properties": { "command": { "type": "string" }, "result": { "enum": ["pass", "fail", "not_run"] }, "note": { "type": "string" } } } },
+        "risks": { "type": "array", "items": { "type": "string" } },
+        "remaining": { "type": "array", "items": { "type": "string" } },
+        "docs_updated": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "sentinel": {
+      "type": "object",
+      "required": ["verdict", "findings", "tested", "not_tested", "evidence"],
+      "properties": {
+        "verdict": { "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL"] },
+        "modes": { "type": "array", "items": { "enum": ["FUNCTIONAL", "VISUAL", "ACCESSIBILITY", "REGRESSION", "SECURITY_BASIC"] } },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "title", "where", "repro", "owner"],
+            "properties": {
+              "severity": { "enum": ["critical", "high", "medium", "low"] },
+              "title": { "type": "string" },
+              "where": { "type": "string", "description": "pagina/file + viewport" },
+              "repro": { "type": "string" },
+              "expected": { "type": "string" },
+              "owner": { "type": "string", "description": "agente responsabile della correzione" }
+            }
+          }
+        },
+        "tested": { "type": "array", "items": { "type": "string" } },
+        "not_tested": { "type": "array", "items": { "type": "string", "description": "cosa non è stato testato e perché" } },
+        "evidence": {
+          "type": "object",
+          "properties": {
+            "screenshots": { "type": "array", "items": { "type": "string" } },
+            "console_errors": { "type": "array", "items": { "type": "string" } },
+            "network_errors": { "type": "array", "items": { "type": "string" } },
+            "commands": { "type": "array", "items": { "type": "string" } },
+            "accessibility": { "type": "array", "items": { "type": "string" } },
+            "security": { "type": "array", "items": { "type": "string" } },
+            "regressions": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "rocket": {
+      "type": "object",
+      "required": ["branch", "commits", "ci", "preview", "deploy_status", "rollback"],
+      "properties": {
+        "branch": { "type": "string" },
+        "commits": { "type": "array", "items": { "type": "string" } },
+        "ci": { "enum": ["passed", "failed", "running", "none"] },
+        "preview": { "type": "string" },
+        "deploy_status": { "enum": ["none", "preview", "awaiting_approval", "production"] },
+        "rollback": { "type": "string" }
+      }
+    }
+  }
+}

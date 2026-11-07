@@ -1,0 +1,13 @@
+{
+  "_info": "Comandi di verifica del progetto e ultimo esito. Atlas e Sentinel lo aggiornano; il gate di chiusura lo usa come prova.",
+  "commands": {
+    "lint": "",
+    "types": "",
+    "unit": "",
+    "build": "",
+    "e2e": ""
+  },
+  "last_runs": [
+    { "command": "", "result": "pass", "at": "", "note": "" }
+  ]
+}

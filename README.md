@@ -60,7 +60,7 @@ Apri http://localhost:3000. Al primo avvio vengono creati alcuni progetti demo: 
 Gli agenti lavorano davvero tramite **Claude Code con il tuo abbonamento**, divisi per specializzazione.
 
 1. **Supabase**: esegui nel SQL Editor la parte "Fase 3" di `supabase/schema.sql` (tabelle `agent_events` e `launch_requests`).
-2. **Kit sul PC** (già fatto una volta): `npm run kit -- installa` → 12 specialisti `mds-*` in `~/.claude/agents`, 10 skill `mds-*`, lezioni in `~/.claude/mds/lezioni`.
+2. **Kit sul PC** (già fatto una volta): `npm run kit -- installa` → 12 specialisti `mds-*` in `~/.claude/agents`, le skill `mds-*`, lezioni in `~/.claude/mds/lessons`.
 3. **Plugin ufficiali**: Libreria → *Squadra e potenziamenti* → comandi `/plugin install …@claude-plugins-official` (uno alla volta in Claude Code).
 4. **Motore locale**: `npm run motore` (tienilo aperto mentre lavori).
 5. **Nel progetto**: Impostazioni → cartella sul PC + "Team reale" → pulsante **Lavora con il team**.
@@ -69,3 +69,18 @@ Cosa succede: il motore installa il kit nel progetto (blocco nel `CLAUDE.md`, `d
 
 Per insegnare al team: quando correggi qualcosa scrivi `/mds-lezione` → la regola resta per sempre in quel ruolo.
 Per preparare a mano un progetto: `npm run kit -- progetto "C:\percorso" --tipo webapp --template "Aurora Glass"`.
+
+## MDS Team v2 — framework agentico
+
+Evoluzione del team (ramo `feat/mds-team-v2`): AGENT → SKILL → TOOL/MCP → POLICY → VERIFICATION → LEARNING.
+
+- **Atlas** (skill `mds-team`) classifica ogni richiesta (TRIVIAL / STANDARD / COMPLEX / HIGH_RISK), sceglie il team minimo e scrive il piano a nodi in `.mds/state/current-task.json`.
+- **Tier di modello** FAST / STANDARD / DEEP in `kit/config.json`, senza nomi di modello negli agenti. Per consumare meno: `npm run kit -- installa --risparmio`.
+- **45 skill** condivise in `kit/skills/`.
+- **Sentinel** è un gate obbligatorio: verdetto PASS / PASS_WITH_WARNINGS / FAIL, ciclo di correzione con al massimo 2 ripetizioni.
+- **Policy** (`kit/policies/policies.json`) applicate dall'hook `scripts/mds-guard.mjs`: chiede conferma per operazioni irreversibili, blocca i segreti nel codice.
+- **Lezioni strutturate** in `~/.claude/mds/lessons/` e `.mds/lessons/project.yaml`.
+- **Scanner offline** per skill/plugin/MCP di terzi: `npm run kit -- scan <cartella>`.
+- **Eval**: `npm run eval` (lint, policy, gate) · `npm run eval -- report <progetto>` (scorecard dalla telemetria).
+
+Documentazione: [architettura](docs/architecture/mds-team.md) · [piano di upgrade](docs/MDS-UPGRADE-PLAN.md) · [ecosistema](docs/MDS-ECOSYSTEM.md) · [decisioni](docs/decisions/).

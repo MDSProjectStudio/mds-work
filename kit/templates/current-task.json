@@ -1,0 +1,38 @@
+{
+  "id": "T-AAAA-MM-GG-01",
+  "title": "",
+  "request": "",
+  "status": "planning",
+  "created_at": "",
+  "updated_at": "",
+  "classification": {
+    "level": "STANDARD",
+    "scope": "",
+    "risk": "low",
+    "domains": [],
+    "parallelizability": "none",
+    "reversibility": "git-revert",
+    "verification": ["lint", "types", "build"],
+    "estimated_context": "small",
+    "required_tools": [],
+    "required_skills": []
+  },
+  "approvals": [],
+  "nodes": [
+    {
+      "id": "N1",
+      "owner": "atlas",
+      "dependencies": [],
+      "inputs": [],
+      "expected_output": "",
+      "success_criteria": [],
+      "verification": [],
+      "risk": "low",
+      "status": "pending",
+      "evidence": []
+    }
+  ],
+  "definition_of_done": ["lint pulito", "tipi puliti", "test passati", "build ok", "Sentinel PASS (se UI)", "MAPPA aggiornata (se struttura cambiata)"],
+  "qa_cycles": 0,
+  "notes": ""
+}

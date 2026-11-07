@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "_info": "Tier di modello del team MDS. Gli agenti dichiarano un tier, non un modello: l'installatore lo traduce nell'alias qui sotto. Cambia qui per spostare tutto il team (es. quando escono modelli nuovi).",
+  "tiers": {
+    "fast": { "model": "haiku", "effort": "low", "use": "lettura, ricerca, compiti operativi ripetitivi" },
+    "standard": { "model": "sonnet", "effort": "medium", "use": "implementazione e verifica" },
+    "deep": { "model": "opus", "effort": "high", "use": "pianificazione, architettura, direzione artistica" }
+  },
+  "profiles": {
+    "risparmio": { "_info": "npm run kit -- installa --profilo risparmio", "deep": { "model": "sonnet", "effort": "high" } }
+  },
+  "agents": {
+    "mds-esploratore": "fast",
+    "mds-mappa": "fast",
+    "mds-devops": "fast",
+    "mds-architetto": "deep",
+    "mds-design": "deep",
+    "mds-frontend": "standard",
+    "mds-backend": "standard",
+    "mds-database": "standard",
+    "mds-mobile": "standard",
+    "mds-game": "standard",
+    "mds-seo": "standard",
+    "mds-qa": "standard"
+  }
+}
