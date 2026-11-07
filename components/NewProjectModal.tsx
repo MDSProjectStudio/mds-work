@@ -16,7 +16,12 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
   const [client, setClient] = useState("");
   const [description, setDescription] = useState("");
   const [kind, setKind] = useState<ProjectKind>("website");
-  const [status, setStatus] = useState<ProjectStatus>("planned");
+  const [status, setStatus] = useState<ProjectStatus>("active");
+  const [folder, setFolder] = useState("");
+  const [folderTouched, setFolderTouched] = useState(false);
+  const [real, setReal] = useState(true);
+  const baseDir = (db?.studio.projectsDir ?? "").replace(/[\\/]+$/, "");
+  const folderValue = folderTouched ? folder : baseDir && name.trim() ? `${baseDir}\\${name.trim().replace(/[<>:"/\\|?*]+/g, "").trim()}` : folder;
   const [deadline, setDeadline] = useState("");
   const [price, setPrice] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -27,7 +32,7 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
-    setName(""); setClient(""); setDescription(""); setKind("website"); setStatus("planned"); setDeadline(""); setPrice(""); setTemplateId(""); setBp(null); setDetected(null); setFileErr("");
+    setName(""); setClient(""); setDescription(""); setKind("website"); setStatus("active"); setFolder(""); setFolderTouched(false); setReal(true); setDeadline(""); setPrice(""); setTemplateId(""); setBp(null); setDetected(null); setFileErr("");
   };
 
   const applyBlueprint = (n: string, text: string) => {
@@ -55,8 +60,11 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
     setBusy(true);
     const ok = await dispatch({
       type: "addProject",
-      project: { name: name.trim(), client: client.trim(), description: description.trim(), kind, status, deadline: deadline || undefined, price: Number(price) || 0, templateId: templateId || defaultTemplateFor(kind), blueprint: bp ?? undefined },
+      project: { name: name.trim(), client: client.trim(), description: description.trim(), kind, status, deadline: deadline || undefined, price: Number(price) || 0, templateId: templateId || defaultTemplateFor(kind), blueprint: bp ?? undefined, localPath: folderValue.trim() || undefined, agentsMode: real ? "off" : "sim" },
     });
+    // ricorda la cartella base dei progetti per la prossima volta
+    const parent = folderValue.trim().replace(/[\\/][^\\/]+$/, "");
+    if (ok && real && parent && parent !== baseDir) dispatch({ type: "updateStudio", patch: { projectsDir: parent } });
     setBusy(false);
     if (ok) {
       reset();
@@ -108,6 +116,27 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
                 {(tplOptions.length ? tplOptions : TEMPLATES).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </Field>
+          </div>
+          <div className="rounded-2xl border border-neon/25 bg-cyan-400/[0.04] p-3">
+            <label className="flex items-center gap-2 text-[13px] font-medium">
+              <input type="checkbox" className="accent-cyan-400" checked={real} onChange={(e) => setReal(e.target.checked)} />
+              Team reale: lavora con Claude Code sul mio PC
+            </label>
+            {real && (
+              <div className="mt-2.5">
+                <Field label="Cartella del progetto sul PC" hint="Se non esiste, il motore locale la crea. Si ricorda la cartella base per i prossimi progetti.">
+                  <input
+                    className="field mono text-[12.5px]"
+                    value={folderValue}
+                    onChange={(e) => {
+                      setFolderTouched(true);
+                      setFolder(e.target.value);
+                    }}
+                    placeholder="C:\Users\…\Desktop\Projects & Code\Nome progetto"
+                  />
+                </Field>
+              </div>
+            )}
           </div>
         </div>
 

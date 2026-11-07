@@ -48,7 +48,13 @@ async function handle(req, projects) {
   };
   if (!p) return fail("Progetto non trovato nella dashboard");
   if (!p.localPath) return fail(`"${p.name}": manca la cartella sul PC (Impostazioni del progetto)`);
-  if (!fs.existsSync(p.localPath)) return fail(`"${p.name}": la cartella ${p.localPath} non esiste su questo PC`);
+  if (!fs.existsSync(p.localPath)) {
+    // progetto nuovo: creo la cartella se quella che la contiene esiste già
+    if (!fs.existsSync(path.dirname(p.localPath))) return fail(`"${p.name}": la cartella ${path.dirname(p.localPath)} non esiste su questo PC`);
+    fs.mkdirSync(p.localPath);
+    say(`✓ Cartella creata: ${p.localPath}`);
+    await event(p.id, "Cartella del progetto creata sul PC", "info");
+  }
 
   if (!userKitInstalled()) {
     installUser({ quiet: true });

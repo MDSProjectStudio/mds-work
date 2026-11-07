@@ -1,6 +1,5 @@
-import { buildBrief } from "@/lib/brief";
-import { templateById } from "@/lib/templates";
 import { loadDB, requireOwner } from "@/lib/server/store";
+import { queueLaunch } from "@/lib/server/launch";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { authEnabled } from "@/lib/supabase/config";
 
@@ -22,19 +21,11 @@ export async function POST(req: Request) {
   const db = await loadDB();
   const p = db.projects.find((x) => x.id === body.projectId);
   if (!p) return Response.json({ error: "Progetto non trovato" }, { status: 404 });
-  if (!p.localPath) return Response.json({ error: "Imposta prima la cartella del progetto sul PC (Impostazioni del progetto)" }, { status: 400 });
   const task = typeof body.taskId === "string" ? db.tasks.find((t) => t.id === body.taskId && t.projectId === p.id) : undefined;
 
-  const { data, error } = await supabaseAdmin()
-    .from("launch_requests")
-    .insert({ project_id: p.id, task_id: task?.id ?? null, template: templateById(p.templateId).name, brief: buildBrief(db, p, task) })
-    .select("id")
-    .single();
-  if (error) {
-    const missing = /relation .*launch_requests|does not exist|schema cache/i.test(error.message);
-    return Response.json({ error: missing ? "Manca la tabella launch_requests: esegui la parte 'Fase 3' di supabase/schema.sql" : "Database non raggiungibile" }, { status: 500 });
-  }
-  return Response.json({ id: data.id });
+  const r = await queueLaunch(db, p, { task });
+  if (r.error) return Response.json({ error: r.error }, { status: 400 });
+  return Response.json({ id: r.id });
 }
 
 export async function GET(req: Request) {

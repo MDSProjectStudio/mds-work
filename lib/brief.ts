@@ -6,7 +6,7 @@ import { templateById } from "./templates";
  * Brief pronto da incollare in Claude Code: contesto del progetto, standard
  * grafici e funzionali, cosa fare e come consegnarlo.
  */
-export function buildBrief(db: DB, p: Project, task?: Task): string {
+export function buildBrief(db: DB, p: Project, task?: Task, focus?: string): string {
   const tpl = templateById(p.templateId);
   const role: AgentRole | undefined = task && task.assignee !== "me" ? task.assignee : undefined;
   const packs = role ? packsForAgent(p.kind, role) : packsFor(p.kind);
@@ -25,6 +25,11 @@ export function buildBrief(db: DB, p: Project, task?: Task): string {
   if (p.deadline) L.push(`- Consegna prevista: ${p.deadline}`);
   if (role) L.push(`- Ruolo da interpretare: **${ROLES[role].label}** — ${ROLES[role].blurb}`);
   L.push("");
+  if (focus) {
+    L.push("## Cosa fare adesso");
+    L.push(focus);
+    L.push("");
+  }
   if (task) {
     L.push("## Cosa fare");
     L.push(task.title);

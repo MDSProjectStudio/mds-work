@@ -208,9 +208,19 @@ export function Office({ project, selected, onSelect }: { project: Project; sele
           return <Desk key={a.id} a={a} x={p.x} y={p.y} now={now} selected={selected === a.id} onClick={() => onSelect(a.id)} />;
         })}
 
-        {project.status !== "active" && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-amber/40 bg-black/60 px-4 py-1.5 text-xs text-amber backdrop-blur">
-            {project.status === "planned" ? "Progetto da iniziare: gli sviluppatori partono quando approvi il piano o lo metti In corso" : project.status === "waiting_client" ? `In pausa — ${project.waitingReason || "in attesa del cliente"}` : "Progetto consegnato ✓"}
+        {(project.status !== "active" || project.agentsMode === "off") && (
+          <div className="absolute bottom-4 left-1/2 max-w-[90%] -translate-x-1/2 rounded-full border border-amber/40 bg-black/70 px-4 py-1.5 text-center text-xs text-amber backdrop-blur">
+            {project.agentsMode === "off"
+              ? !project.localPath
+                ? "Team reale: imposta la cartella del progetto in Impostazioni, poi premi «Lavora con il team»"
+                : working
+                  ? "Il team sta lavorando sul tuo PC con Claude Code"
+                  : "Team reale: premi «Lavora con il team» (o approva una richiesta) e il lavoro parte sul tuo PC"
+              : project.status === "planned"
+                ? "Simulazione · progetto da iniziare: gli agenti partono quando lo metti In corso"
+                : project.status === "waiting_client"
+                  ? `In pausa — ${project.waitingReason || "in attesa del cliente"}`
+                  : "Progetto consegnato ✓"}
           </div>
         )}
       </div>

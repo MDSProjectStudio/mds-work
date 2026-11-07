@@ -107,6 +107,8 @@ function createProject(db: DB, input: Extract<Action, { type: "addProject" }>["p
     blueprint: bp,
     analysis: bp ? "pending" : "none",
     token: newToken(),
+    agentsMode: input.agentsMode ?? "sim",
+    localPath: input.localPath?.trim().slice(0, 400) || undefined,
     createdAt: now,
   };
   db.projects.push(p);
@@ -198,7 +200,14 @@ export function reduce(db: DB, action: Action, now: number): DB {
       const p = db.projects.find((x) => x.id === action.projectId);
       if (!p || !action.title.trim()) break;
       const t = addTask(db, p, { title: action.title.trim(), priority: action.priority, due: action.due, assignee: action.assignee, detail: action.detail }, now);
-      if (t.assignee !== "me") log(db, p.id, "chief", `Nuova task per ${ROLES[t.assignee].name}: "${t.title}"`, "info", now);
+      if (t.assignee !== "me") {
+        log(db, p.id, "chief", `Nuova task per ${ROLES[t.assignee].name}: "${t.title}"`, "info", now);
+        // una task per il team su un progetto "da iniziare" lo mette in moto
+        if (p.status === "planned") {
+          p.status = "active";
+          log(db, p.id, "system", "Progetto avviato: il team ha del lavoro", "info", now);
+        }
+      }
       break;
     }
     case "updateTask": {

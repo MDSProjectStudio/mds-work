@@ -111,6 +111,8 @@ export interface StudioSettings {
   rate: number;
   vatNote: string;
   quoteFooter: string;
+  /** Cartella dove crei i progetti sul PC (es. C:\Users\me\Desktop\Progetti) */
+  projectsDir?: string;
 }
 
 export interface ImportInput {
@@ -257,7 +259,7 @@ export interface DB {
 }
 
 export type Action =
-  | { type: "addProject"; project: { name: string; client: string; description: string; kind: ProjectKind; deadline?: string; price: number; status: ProjectStatus; templateId?: string; blueprint?: { name: string; text: string } } }
+  | { type: "addProject"; project: { name: string; client: string; description: string; kind: ProjectKind; deadline?: string; price: number; status: ProjectStatus; templateId?: string; blueprint?: { name: string; text: string }; localPath?: string; agentsMode?: "sim" | "off" } }
   | { type: "updateProject"; id: string; patch: Partial<Pick<Project, "name" | "client" | "status" | "waitingReason" | "description" | "deadline" | "price" | "templateId" | "kind" | "agentsMode" | "repoUrl" | "localPath" | "clientEmail" | "clientPhone" | "maintenance" | "links">> }
   | { type: "importProjects"; projects: ImportInput[] }
   | { type: "saveLead"; lead: Partial<Lead> & { name: string } }
