@@ -1,0 +1,182 @@
+export type ProjectKind = "website" | "ecommerce" | "management" | "webapp" | "mobile" | "automation" | "game";
+export type ProjectStatus = "planned" | "active" | "waiting_client" | "done";
+export type AgentRole =
+  | "chief" | "analyst" | "triage" | "design" | "frontend" | "backend"
+  | "data" | "seo" | "mobile" | "game" | "qa" | "devops";
+export type AgentStatus = "idle" | "working" | "waiting" | "error";
+export type TaskStatus = "todo" | "doing" | "review" | "blocked" | "ready" | "shipping" | "done";
+export type Priority = "low" | "med" | "high";
+export type LogLevel = "info" | "success" | "warn" | "error";
+export type VaultProvider = "github" | "supabase" | "vercel" | "email" | "domain" | "other";
+
+export interface Blueprint {
+  name: string;
+  text: string;
+  uploadedAt: number;
+  detectedKind: ProjectKind;
+  confidence: number;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  client: string;
+  color: string;
+  status: ProjectStatus;
+  waitingReason?: string;
+  description: string;
+  kind: ProjectKind;
+  deadline?: string;
+  price: number;
+  templateId: string;
+  blueprint?: Blueprint;
+  analysis: "none" | "pending" | "proposed" | "done" | "rejected";
+  token: string;
+  createdAt: number;
+  doneAt?: number;
+}
+
+export interface Task {
+  id: string;
+  projectId: string;
+  title: string;
+  detail?: string;
+  status: TaskStatus;
+  priority: Priority;
+  assignee: "me" | AgentRole;
+  due?: string;
+  createdAt: number;
+  gate: boolean;
+  attempts: number;
+  branch?: string;
+  source: "plan" | "request" | "manual" | "inbox";
+  bug?: string;
+}
+
+export interface Agent {
+  id: string;
+  projectId: string;
+  role: AgentRole;
+  status: AgentStatus;
+  thought: string;
+  jobRef?: string;
+  startedAt?: number;
+  duration?: number;
+  tasksDone: number;
+}
+
+export interface ClientRequest {
+  id: string;
+  projectId: string;
+  author: string;
+  message: string;
+  kind?: "bug" | "feature" | "design" | "question";
+  status: "new" | "analyzing" | "analyzed" | "approved" | "rejected";
+  createdAt: number;
+  summary?: string;
+  steps?: { title: string; role: AgentRole }[];
+  estimateHours?: number;
+}
+
+export interface Approval {
+  id: string;
+  projectId: string;
+  kind: "plan" | "request" | "merge" | "error";
+  agent: AgentRole;
+  title: string;
+  detail: string;
+  items?: string[];
+  taskId?: string;
+  requestId?: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: number;
+  resolvedAt?: number;
+  meta?: { steps?: { title: string; role: AgentRole; gate?: boolean }[]; branch?: string; preview?: string; team?: AgentRole[] };
+}
+
+export interface LogEntry {
+  id: string;
+  projectId: string;
+  agent: AgentRole | "system" | "me";
+  text: string;
+  level: LogLevel;
+  at: number;
+}
+
+export interface Payment {
+  id: string;
+  projectId: string;
+  label: string;
+  amount: number;
+  dueDate?: string;
+  status: "due" | "paid";
+  paidAt?: number;
+}
+
+export interface InboxItem {
+  id: string;
+  text: string;
+  createdAt: number;
+}
+
+export interface VaultEntry {
+  id: string;
+  projectId?: string;
+  provider: VaultProvider;
+  label: string;
+  iv: string;
+  ct: string;
+  updatedAt: number;
+}
+
+export interface VaultMeta {
+  salt: string;
+  iterations: number;
+  checkIv: string;
+  checkCt: string;
+}
+
+export interface LibraryBlueprint {
+  id: string;
+  name: string;
+  kind: ProjectKind;
+  text: string;
+  createdAt: number;
+}
+
+export interface DB {
+  projects: Project[];
+  tasks: Task[];
+  agents: Agent[];
+  requests: ClientRequest[];
+  approvals: Approval[];
+  logs: LogEntry[];
+  payments: Payment[];
+  inbox: InboxItem[];
+  vault: VaultEntry[];
+  vaultMeta: VaultMeta | null;
+  library: LibraryBlueprint[];
+  meta: { seed: number; version: number };
+}
+
+export type Action =
+  | { type: "addProject"; project: { name: string; client: string; description: string; kind: ProjectKind; deadline?: string; price: number; status: ProjectStatus; templateId?: string; blueprint?: { name: string; text: string } } }
+  | { type: "updateProject"; id: string; patch: Partial<Pick<Project, "name" | "client" | "status" | "waitingReason" | "description" | "deadline" | "price" | "templateId" | "kind">> }
+  | { type: "deleteProject"; id: string }
+  | { type: "reanalyze"; id: string; blueprint?: { name: string; text: string } }
+  | { type: "addTask"; projectId: string; title: string; priority?: Priority; due?: string; assignee?: "me" | AgentRole; detail?: string }
+  | { type: "updateTask"; id: string; patch: Partial<Pick<Task, "title" | "status" | "priority" | "due" | "assignee" | "detail">> }
+  | { type: "deleteTask"; id: string }
+  | { type: "resolveApproval"; id: string; decision: "approved" | "rejected" }
+  | { type: "addInbox"; text: string }
+  | { type: "removeInbox"; id: string }
+  | { type: "inboxToTask"; id: string; projectId: string }
+  | { type: "addPayment"; projectId: string; label: string; amount: number; dueDate?: string }
+  | { type: "markPaid"; id: string }
+  | { type: "deletePayment"; id: string }
+  | { type: "vaultInit"; meta: VaultMeta }
+  | { type: "vaultSave"; entry: VaultEntry }
+  | { type: "vaultDelete"; id: string }
+  | { type: "saveLibrary"; name: string; kind: ProjectKind; text: string }
+  | { type: "deleteLibrary"; id: string }
+  | { type: "resetDemo" };
