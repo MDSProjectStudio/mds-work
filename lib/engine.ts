@@ -397,6 +397,7 @@ function importProject(db: DB, inp: ImportInput, now: number) {
   p.agentsMode = inp.agentsMode;
   p.repoUrl = inp.repoUrl?.slice(0, 300);
   p.localPath = inp.localPath?.slice(0, 400);
+  if (inp.links) p.links = { supabaseRef: inp.links.supabaseRef?.slice(0, 60), vercelProject: inp.links.vercelProject?.slice(0, 120), vercelTeam: inp.links.vercelTeam?.slice(0, 120) };
   p.price = Math.max(0, Number(inp.price) || 0);
   if (inp.doc?.text?.trim()) {
     p.blueprint = { name: inp.doc.name.slice(0, 120), text: inp.doc.text.slice(0, 60_000), uploadedAt: now, ...detect(inp.doc.text) };
@@ -709,7 +710,7 @@ export function advance(db: DB, now: number): boolean {
           : p.status === "done"
             ? "Progetto consegnato"
             : p.agentsMode === "off" && !working
-              ? "Team in pausa: ci lavori tu con Claude Code"
+              ? "Team reale pronto: premi «Lavora con il team»"
               : working
               ? `Coordino ${working} agenti · ${queue} task in coda`
               : queue

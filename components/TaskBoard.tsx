@@ -10,6 +10,7 @@ import { fmtDate, today } from "@/lib/selectors";
 import type { AgentRole, Priority, Project, Task, TaskStatus } from "@/lib/types";
 import { Sprite } from "./Sprite";
 import { BriefButton } from "./BriefButton";
+import { LaunchButton } from "./LaunchButton";
 
 const COLS: { key: string; label: string; statuses: TaskStatus[]; color: string }[] = [
   { key: "todo", label: "Da fare", statuses: ["todo"], color: "#38bdf8" },
@@ -59,6 +60,7 @@ function TaskCard({ t, project }: { t: Task; project: Project }) {
         )}
         {t.gate && !mine && t.status !== "done" && <span className="chip !py-0 !text-[10px] !text-amber">serve ok</span>}
         <div className="ml-auto flex gap-1 opacity-60 transition group-hover:opacity-100">
+          {t.status !== "done" && project.agentsMode === "off" && <LaunchButton project={project} task={t} compact />}
           {t.status !== "done" && <BriefButton project={project} task={t} compact />}
           {mine && NEXT[t.status] && (
             <button className="btn btn-sm !p-1" onClick={() => dispatch({ type: "updateTask", id: t.id, patch: { status: NEXT[t.status] } })} aria-label="Avanza">

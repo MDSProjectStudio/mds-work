@@ -1,5 +1,6 @@
 import { advance, reduce } from "@/lib/engine";
 import { loadDB, requireOwner, saveDB } from "@/lib/server/store";
+import { withLiveEvents } from "@/lib/server/live";
 import type { Action } from "@/lib/types";
 
 const ALLOWED = new Set<Action["type"]>([
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
     const next = reduce(await loadDB(), action, now);
     advance(next, now);
     await saveDB(next);
-    return Response.json(next, { headers: { "Cache-Control": "no-store" } });
+    return Response.json(await withLiveEvents(structuredClone(next)), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[action]", action.type, e);
     return Response.json({ error: "Azione non applicabile" }, { status: 400 });

@@ -7,7 +7,9 @@
     "build": "node node_modules/next/dist/bin/next build",
     "start": "node node_modules/next/dist/bin/next start",
     "lint": "node node_modules/eslint/bin/eslint.js",
-    "scan": "node scripts/scan-projects.mjs"
+    "scan": "node scripts/scan-projects.mjs",
+    "kit": "node scripts/kit.mjs",
+    "motore": "node scripts/motore.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

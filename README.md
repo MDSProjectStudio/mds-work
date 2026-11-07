@@ -54,3 +54,18 @@ Apri http://localhost:3000. Al primo avvio vengono creati alcuni progetti demo: 
 - [ ] Notifiche Telegram / email
 - [ ] Blueprint in PDF
 - [ ] Ore stimate vs reali, scadenze di domini e piani, budget dei costi AI, avviso se hai troppi progetti in corso
+
+## Fase 3 — Team reale con Claude Code
+
+Gli agenti lavorano davvero tramite **Claude Code con il tuo abbonamento**, divisi per specializzazione.
+
+1. **Supabase**: esegui nel SQL Editor la parte "Fase 3" di `supabase/schema.sql` (tabelle `agent_events` e `launch_requests`).
+2. **Kit sul PC** (già fatto una volta): `npm run kit -- installa` → 12 specialisti `mds-*` in `~/.claude/agents`, 10 skill `mds-*`, lezioni in `~/.claude/mds/lezioni`.
+3. **Plugin ufficiali**: Libreria → *Squadra e potenziamenti* → comandi `/plugin install …@claude-plugins-official` (uno alla volta in Claude Code).
+4. **Motore locale**: `npm run motore` (tienilo aperto mentre lavori).
+5. **Nel progetto**: Impostazioni → cartella sul PC + "Team reale" → pulsante **Lavora con il team**.
+
+Cosa succede: il motore installa il kit nel progetto (blocco nel `CLAUDE.md`, `docs/MAPPA.md`, hook verso la dashboard, plugin del tipo di progetto), scrive `.mds/brief.md` e apre Claude Code (o la cartella + `/mds-team` negli appunti per l'app). Il capo squadra (skill `mds-team`) chiama solo gli specialisti necessari; la stanza in dashboard mostra il lavoro vero tramite gli hook.
+
+Per insegnare al team: quando correggi qualcosa scrivi `/mds-lezione` → la regola resta per sempre in quel ruolo.
+Per preparare a mano un progetto: `npm run kit -- progetto "C:\percorso" --tipo webapp --template "Aurora Glass"`.

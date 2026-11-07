@@ -18,6 +18,9 @@ export function ProjectSettings({ project: p }: { project: Project }) {
     deadline: p.deadline ?? "",
     price: String(p.price || ""),
     agentsMode: p.agentsMode ?? "sim",
+    sbRef: p.links?.supabaseRef ?? "",
+    vcProject: p.links?.vercelProject ?? "",
+    vcTeam: p.links?.vercelTeam ?? "",
     mActive: p.maintenance?.active ?? false,
     mMonthly: String(p.maintenance?.monthly ?? ""),
     mSince: p.maintenance?.since ?? new Date().toISOString().slice(0, 7),
@@ -42,6 +45,7 @@ export function ProjectSettings({ project: p }: { project: Project }) {
         deadline: f.deadline || undefined,
         price: Number(f.price) || 0,
         agentsMode: f.agentsMode as "sim" | "off",
+        links: { supabaseRef: f.sbRef.trim() || undefined, vercelProject: f.vcProject.trim() || undefined, vercelTeam: f.vcTeam.trim() || undefined },
         maintenance: { active: f.mActive, monthly: Number(f.mMonthly) || 0, since: f.mSince, day: Number(f.mDay) || 5 },
       },
     });
@@ -65,14 +69,24 @@ export function ProjectSettings({ project: p }: { project: Project }) {
         <SectionTitle kicker="codice" title={<span className="flex items-center gap-2"><GitBranch size={15} className="text-neon" /> Repo e cartella</span>} />
         <div className="mt-4 space-y-3">
           <Field label="Repo GitHub"><input className="field" value={f.repoUrl} onChange={set("repoUrl")} placeholder="https://github.com/…" /></Field>
-          <Field label="Cartella sul PC" hint="Finisce nel brief per Claude Code, così sa dove lavorare."><input className="field mono text-[12.5px]" value={f.localPath} onChange={set("localPath")} placeholder="C:\Users\…\progetto" /></Field>
+          <Field label="Cartella sul PC" hint="Serve a «Lavora con il team»: il motore locale apre Claude Code qui."><input className="field mono text-[12.5px]" value={f.localPath} onChange={set("localPath")} placeholder="C:\Users\…\progetto" /></Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Progetto Supabase (ref)" hint="È nell'indirizzo del pannello Supabase"><input className="field mono text-[12.5px]" value={f.sbRef} onChange={set("sbRef")} placeholder="abcd…" /></Field>
+            <Field label="Progetto Vercel (nome)"><input className="field mono text-[12.5px]" value={f.vcProject} onChange={set("vcProject")} placeholder="nome-progetto" /></Field>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/^https?:\/\//.test(f.repoUrl) && <a className="chip hover:border-neon/60" href={f.repoUrl} target="_blank" rel="noreferrer noopener">GitHub ↗</a>}
+            {/^[a-z0-9]{6,}$/i.test(f.sbRef) && <a className="chip hover:border-neon/60" href={`https://supabase.com/dashboard/project/${f.sbRef}`} target="_blank" rel="noreferrer noopener">Supabase ↗</a>}
+            {f.vcProject && <a className="chip hover:border-neon/60" href="https://vercel.com/dashboard" target="_blank" rel="noreferrer noopener">Vercel ↗</a>}
+            <span className="text-[11px] text-muted">Le password di questi account vanno nella scheda Account (cassaforte cifrata).</span>
+          </div>
           <Field label="Agenti">
             <select className="field" value={f.agentsMode} onChange={set("agentsMode")}>
-              <option value="sim">Attivi (simulazione: il team lavora da solo)</option>
-              <option value="off">In pausa (ci lavoro io con Claude Code)</option>
+              <option value="off">Team reale: Claude Code sul mio PC (consigliato)</option>
+              <option value="sim">Simulazione (dimostrazione, nessun lavoro vero)</option>
             </select>
           </Field>
-          <p className="flex gap-2 text-[11.5px] text-muted"><Bot size={13} className="mt-0.5 flex-none" /> In pausa, Scout continua comunque a leggere le richieste del portale clienti.</p>
+          <p className="flex gap-2 text-[11.5px] text-muted"><Bot size={13} className="mt-0.5 flex-none" /> Con il team reale, il pulsante «Lavora con il team» apre Claude Code nella cartella con il kit della squadra. Scout continua a leggere le richieste del portale clienti.</p>
         </div>
       </Card>
 

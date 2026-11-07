@@ -3,14 +3,15 @@
 import { motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import clsx from "clsx";
-import { BookOpen, Copy, Download, ExternalLink, LayoutTemplate, Link2, Plug, Plus, Search, Sparkles, Trash, Zap } from "lucide-react";
+import { BookOpen, Copy, ExternalLink, LayoutTemplate, Link2, Plus, Search, Sparkles, Trash, Zap } from "lucide-react";
 import { useDB } from "@/lib/client";
-import { KIND_LABEL, ROLES, SKILL_CATEGORIES, SKILL_PACKS } from "@/lib/skills";
+import { KIND_LABEL, SKILL_CATEGORIES, SKILL_PACKS } from "@/lib/skills";
 import { TEMPLATES, TEMPLATE_STYLES } from "@/lib/templates";
-import { POWERUPS, REFERENCES, REF_CATEGORIES, subagentFile } from "@/lib/arsenal";
+import { REFERENCES, REF_CATEGORIES } from "@/lib/arsenal";
 import { detectKind } from "@/lib/analyze";
-import type { AgentRole, ProjectKind } from "@/lib/types";
+import type { ProjectKind } from "@/lib/types";
 import { TemplatePreview } from "../TemplatePreview";
+import { PowerupsPanel } from "../PowerupsPanel";
 import { Sprite } from "../Sprite";
 import { Card, Empty, Loading, PageHeader, SectionTitle } from "../ui";
 
@@ -19,17 +20,9 @@ const TABS: [Tab, string, typeof LayoutTemplate][] = [
   ["templates", `Template grafici (${TEMPLATES.length})`, LayoutTemplate],
   ["skills", `Skill pack (${SKILL_PACKS.length})`, Sparkles],
   ["refs", `Riferimenti (${REFERENCES.length})`, Link2],
-  ["powerups", "Potenziamenti agenti", Zap],
+  ["powerups", "Squadra e potenziamenti", Zap],
   ["blueprints", "Blueprint", BookOpen],
 ];
-
-function download(filename: string, content: string) {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([content], { type: "text/markdown" }));
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
 
 export function LibraryView() {
   const { db, dispatch } = useDB();
@@ -163,54 +156,7 @@ export function LibraryView() {
         </div>
       )}
 
-      {tab === "powerups" && (
-        <>
-          <Card hud className="mb-5 p-5">
-            <SectionTitle kicker="come funziona" title="Rendere ogni agente un esperto della sua categoria" />
-            <div className="mt-3 grid gap-3 text-[12.5px] text-muted md:grid-cols-3">
-              <div><b className="text-fg">1. Sotto-agenti.</b> Scarica il file di un ruolo e mettilo in <code className="mono text-neon">.claude/agents/</code> del progetto (o nella tua cartella utente per averlo ovunque). Claude Code lo usa quando serve quel tipo di lavoro.</div>
-              <div><b className="text-fg">2. MCP.</b> Collega a Claude Code i server MCP del ruolo: Figma per il design, Playwright per vedere davvero la pagina, Supabase/Stripe/Vercel per backend e deploy.</div>
-              <div><b className="text-fg">3. Brief.</b> Il pulsante "Brief per Claude Code" su ogni task include già template, palette e checklist del ruolo giusto.</div>
-            </div>
-          </Card>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {(Object.keys(POWERUPS) as AgentRole[]).map((role) => {
-              const p = POWERUPS[role];
-              const r = ROLES[role];
-              const packsCount = SKILL_PACKS.filter((s) => s.roles.includes(role)).length;
-              return (
-                <Card key={role} className="p-4">
-                  <div className="flex items-center gap-3">
-                    <Sprite role={role} size={42} />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold" style={{ color: r.color }}>{r.name} <span className="mono text-[11px] text-muted">· {r.label}</span></div>
-                      <div className="truncate text-[12px] text-muted">{r.blurb}</div>
-                    </div>
-                    <button className="btn btn-sm" onClick={() => { const f = subagentFile(role); download(f.filename, f.content); }} title="Scarica la definizione per .claude/agents/">
-                      <Download size={13} /> Sotto-agente
-                    </button>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-                    <span className="chip !py-0">{packsCount} skill pack</span>
-                    {p.libs.map((l) => <span key={l} className="chip !py-0">{l}</span>)}
-                  </div>
-                  {!!p.mcp.length && (
-                    <div className="mt-3 space-y-1.5">
-                      {p.mcp.map((m) => (
-                        <a key={m.name} href={m.url} target="_blank" rel="noreferrer noopener" className="flex items-start gap-2 rounded-lg px-2 py-1 text-[12.5px] transition hover:bg-white/[0.04]">
-                          <Plug size={13} className="mt-0.5 flex-none text-neon" />
-                          <span><b>{m.name}</b> <span className="text-muted">— {m.what}</span></span>
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                  <ul className="mt-2 space-y-0.5 pl-2 text-[12px] text-[#c3cee3]">{p.rules.map((x) => <li key={x}>› {x}</li>)}</ul>
-                </Card>
-              );
-            })}
-          </div>
-        </>
-      )}
+      {tab === "powerups" && <PowerupsPanel />}
 
       {tab === "blueprints" && (
         <div className="grid gap-5 lg:grid-cols-[1fr_1.4fr]">

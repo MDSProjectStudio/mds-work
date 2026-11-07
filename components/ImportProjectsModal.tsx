@@ -43,6 +43,7 @@ function fromScheda(s: Record<string, unknown>): Row {
     doc,
     tasks: ((s.tasks as { title: string; done: boolean }[]) ?? []).slice(0, 150),
     kind: detectKind(text).kind,
+    links: s.links as Row["links"],
     stack,
   };
 }
@@ -107,6 +108,7 @@ export function ImportProjectsModal({ open, onClose }: { open: boolean; onClose:
         doc: r.doc,
         tasks: r.tasks,
         agentsMode: r.agentsMode,
+        links: r.links,
       })),
     });
     setBusy(false);
@@ -184,12 +186,14 @@ export function ImportProjectsModal({ open, onClose }: { open: boolean; onClose:
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
                   {r.stack.map((s) => <span key={s} className="chip !py-0">{s}</span>)}
-                  {r.repoUrl && <span className="chip !py-0"><GitBranch size={10} /> repo</span>}
+                  {r.repoUrl && <span className="chip !py-0"><GitBranch size={10} /> GitHub</span>}
+                  {r.links?.vercelProject && <span className="chip !py-0">▲ Vercel</span>}
+                  {r.links?.supabaseRef && <span className="chip !py-0">⚡ Supabase</span>}
                   <span className="chip !py-0">{r.tasks.length} task ({r.tasks.filter((t) => t.done).length} fatte)</span>
                   {r.doc && <span className="chip !py-0">{r.doc.name}</span>}
                   <label className="ml-auto flex items-center gap-1.5 text-muted">
                     <input type="checkbox" className="accent-cyan-400" checked={r.agentsMode === "sim"} onChange={(e) => patch(r.key, { agentsMode: e.target.checked ? "sim" : "off" })} />
-                    agenti simulati
+                    simulazione (demo)
                   </label>
                 </div>
               </div>
@@ -223,7 +227,7 @@ export function ImportProjectsModal({ open, onClose }: { open: boolean; onClose:
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <span className="flex items-center gap-1.5 text-[11.5px] text-muted">
-          <FolderInput size={13} /> Gli agenti partono in pausa: su un progetto vero lavori tu con Claude Code.
+          <FolderInput size={13} /> I progetti importati usano il team reale: «Lavora con il team» apre Claude Code con il kit sul tuo PC.
         </span>
         <div className="flex gap-2">
           <button className="btn" onClick={onClose}>Annulla</button>

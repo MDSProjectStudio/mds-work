@@ -71,6 +71,21 @@ function gitInfo(dir) {
   return { repoUrl, lastActivity };
 }
 
+/** Account collegati: legge SOLO file di configurazione pubblici, mai .env o chiavi. */
+function detectLinks(dir) {
+  const links = {};
+  try {
+    const v = JSON.parse(read(path.join(dir, ".vercel", "project.json"), 5000) ?? "null");
+    if (v?.projectName) links.vercelProject = v.projectName;
+    else if (v?.projectId) links.vercelProject = v.projectId;
+    if (v?.orgId) links.vercelTeam = v.orgId;
+  } catch {}
+  const toml = read(path.join(dir, "supabase", "config.toml"), 20_000);
+  const ref = toml?.match(/^\s*project_id\s*=\s*"([^"]+)"/m)?.[1];
+  if (ref) links.supabaseRef = ref;
+  return Object.keys(links).length ? links : undefined;
+}
+
 function detectStack(dir) {
   const stack = [];
   const pkg = (() => {
@@ -170,11 +185,12 @@ for (const dir of targets) {
     stack,
     doc: docsParts.length ? { name: [readme, claude, todo].filter(Boolean).join(" + "), text: docsParts.join("\n\n").slice(0, 60_000) } : undefined,
     tasks: extractTasks(Object.values(texts)),
+    links: detectLinks(dir),
     scannedAt: new Date().toISOString(),
   };
   const file = path.join(OUT, `${slug(name)}.mds.json`);
   fs.writeFileSync(file, JSON.stringify(scheda, null, 2));
   ok++;
-  console.log(`✓ ${name}  [${stack.join(", ") || "stack non rilevato"}]  ${scheda.tasks.length} task  ${repoUrl ? "· repo ok" : ""}`);
+  console.log(`✓ ${name}  [${stack.join(", ") || "stack non rilevato"}]  ${scheda.tasks.length} task${repoUrl ? " · GitHub" : ""}${scheda.links?.vercelProject ? " · Vercel" : ""}${scheda.links?.supabaseRef ? " · Supabase" : ""}`);
 }
 console.log(`\n${ok} schede create in ${OUT}\nCaricale in MDS Work → Progetti → "Importa progetti esistenti".`);

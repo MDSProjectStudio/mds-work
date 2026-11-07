@@ -42,6 +42,14 @@ export interface Project {
   clientEmail?: string;
   clientPhone?: string;
   maintenance?: Maintenance;
+  links?: ProjectLinks;
+}
+
+/** Riferimenti agli account del progetto (niente password: quelle stanno nella cassaforte). */
+export interface ProjectLinks {
+  supabaseRef?: string;
+  vercelProject?: string;
+  vercelTeam?: string;
 }
 
 export interface Maintenance {
@@ -119,6 +127,7 @@ export interface ImportInput {
   doc?: { name: string; text: string };
   tasks: { title: string; done: boolean }[];
   agentsMode: "sim" | "off";
+  links?: ProjectLinks;
 }
 
 export interface Task {
@@ -249,7 +258,7 @@ export interface DB {
 
 export type Action =
   | { type: "addProject"; project: { name: string; client: string; description: string; kind: ProjectKind; deadline?: string; price: number; status: ProjectStatus; templateId?: string; blueprint?: { name: string; text: string } } }
-  | { type: "updateProject"; id: string; patch: Partial<Pick<Project, "name" | "client" | "status" | "waitingReason" | "description" | "deadline" | "price" | "templateId" | "kind" | "agentsMode" | "repoUrl" | "localPath" | "clientEmail" | "clientPhone" | "maintenance">> }
+  | { type: "updateProject"; id: string; patch: Partial<Pick<Project, "name" | "client" | "status" | "waitingReason" | "description" | "deadline" | "price" | "templateId" | "kind" | "agentsMode" | "repoUrl" | "localPath" | "clientEmail" | "clientPhone" | "maintenance" | "links">> }
   | { type: "importProjects"; projects: ImportInput[] }
   | { type: "saveLead"; lead: Partial<Lead> & { name: string } }
   | { type: "deleteLead"; id: string }

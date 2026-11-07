@@ -20,6 +20,7 @@ import { VaultPanel } from "../vault/VaultPanel";
 import { ProjectSettings } from "../ProjectSettings";
 import { MessagesPanel } from "../MessagesPanel";
 import { BriefButton } from "../BriefButton";
+import { LaunchButton } from "../LaunchButton";
 import { Card, Empty, Loading, Progress, SectionTitle, StatusBadge } from "../ui";
 
 const TABS = [
@@ -83,7 +84,7 @@ export function ProjectView({ id }: { id: string }) {
                 <StatusBadge status={p.status} />
                 {p.deadline && <span className="chip">consegna {fmtDate(p.deadline)}</span>}
                 <span className="chip">{prog}% completato</span>
-                {p.agentsMode === "off" && <span className="chip !text-amber"><CirclePause size={11} /> agenti in pausa</span>}
+                {p.agentsMode === "off" && <span className="chip !text-neon"><CirclePause size={11} /> team reale · Claude Code</span>}
                 {p.repoUrl && /^https?:\/\//.test(p.repoUrl) && (
                   <a className="chip hover:border-neon/60" href={p.repoUrl} target="_blank" rel="noreferrer"><GitBranch size={11} /> repo</a>
                 )}
@@ -92,6 +93,7 @@ export function ProjectView({ id }: { id: string }) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <LaunchButton project={p} />
             <BriefButton project={p} className="!py-2" />
             <select className="field !w-auto !py-2 text-sm" value={p.status} onChange={(e) => dispatch({ type: "updateProject", id: p.id, patch: { status: e.target.value as ProjectStatus } })}>
               <option value="planned">Da iniziare</option>
