@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { normalizeEmail } from "@/lib/supabase/config";
 
 /**
  * Protegge la dashboard: senza sessione valida (con l'email autorizzata) si va al login.
@@ -26,8 +27,8 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const owner = (process.env.MDS_OWNER_EMAIL ?? "").trim().toLowerCase();
-  const ok = !!user?.email && !!owner && user.email.toLowerCase() === owner;
+  const owner = normalizeEmail(process.env.MDS_OWNER_EMAIL);
+  const ok = !!user?.email && !!owner && normalizeEmail(user.email) === owner;
 
   if (!ok && !request.nextUrl.pathname.startsWith("/api/")) {
     const to = request.nextUrl.clone();

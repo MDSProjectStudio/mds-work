@@ -5,6 +5,13 @@ import { useState } from "react";
 import { Lock, LogIn } from "lucide-react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
+const REASONS: Record<string, string> = {
+  "no-session": "Password giusta, ma la sessione non è stata salvata. Controlla che il browser accetti i cookie e riprova.",
+  "no-owner-config": "Sul server manca la variabile MDS_OWNER_EMAIL (su Vercel: Settings → Environment Variables, poi Redeploy).",
+  "not-owner": "Questo account non è quello autorizzato: MDS_OWNER_EMAIL sul server è diversa dall'email con cui sei entrato.",
+  "no-secret": "Sul server manca la variabile SUPABASE_SECRET_KEY (su Vercel: Settings → Environment Variables, poi Redeploy).",
+};
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,8 +28,18 @@ export default function LoginPage() {
       setBusy(false);
       return;
     }
-    // il controllo dell'email autorizzata lo fa il server: se non sei tu, il proxy rimanda qui
-    window.location.href = "/";
+    // chiede al server se sei autorizzato, così se qualcosa non va vedi il motivo
+    try {
+      const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json());
+      if (me.ok) {
+        window.location.href = "/";
+        return;
+      }
+      setErr(REASONS[me.reason as string] ?? `Accesso non riuscito (${me.reason})`);
+    } catch {
+      setErr("Il server non risponde. Riprova tra poco.");
+    }
+    setBusy(false);
   };
 
   return (
