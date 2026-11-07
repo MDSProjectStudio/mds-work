@@ -71,6 +71,12 @@ export function focusItems(db: DB): FocusItem[] {
     if (d > 3) continue;
     items.push({ id: pay.id, kind: "payment", title: `${pay.label}: ${fmtMoney(pay.amount)}`, sub: d < 0 ? `In ritardo di ${-d} giorni` : d === 0 ? "Da incassare oggi" : `Da incassare tra ${d} giorni`, projectId: pay.projectId, score: d < 0 ? 75 : 45, payment: pay });
   }
+  for (const l of db.leads ?? []) {
+    if (l.stage === "won" || l.stage === "lost" || !l.nextDate) continue;
+    const d = daysTo(l.nextDate);
+    if (d > 0) continue;
+    items.push({ id: l.id, kind: "request", title: `${l.nextStep || "Ricontattare"}: ${l.name}${l.company ? ` (${l.company})` : ""}`, sub: d < 0 ? `Pipeline · in ritardo di ${-d} giorni` : "Pipeline · oggi", projectId: "", score: d < 0 ? 70 : 55 });
+  }
   return items.sort((a, b) => b.score - a.score);
 }
 
@@ -102,4 +108,9 @@ export function fmtRel(ts: number, now = Date.now()) {
 export function greeting() {
   const h = new Date().getHours();
   return h < 6 ? "Buonanotte" : h < 13 ? "Buongiorno" : h < 18 ? "Buon pomeriggio" : "Buonasera";
+}
+
+/** Entrate ricorrenti mensili (canoni di manutenzione attivi). */
+export function mrr(db: DB): number {
+  return db.projects.reduce((s, p) => s + (p.maintenance?.active ? p.maintenance.monthly : 0), 0);
 }

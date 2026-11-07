@@ -185,3 +185,10 @@ select.field option { background: #0a1020; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+/* stampa preventivi: foglio bianco, niente sfondo aurora */
+@media print {
+  @page { size: A4; margin: 0; }
+  html, body { background: #fff !important; }
+  body::before, body::after { display: none !important; }
+}

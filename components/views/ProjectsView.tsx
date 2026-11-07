@@ -1,6 +1,6 @@
 "use client";
 
-import { FolderKanban, Plus } from "lucide-react";
+import { FolderInput, FolderKanban, Plus } from "lucide-react";
 import { useDB } from "@/lib/client";
 import { STATUS_META } from "@/lib/selectors";
 import type { ProjectStatus } from "@/lib/types";
@@ -12,7 +12,7 @@ const COLS: ProjectStatus[] = ["planned", "active", "waiting_client", "done"];
 
 export function ProjectsView() {
   const { db } = useDB();
-  const { openNewProject } = useUI();
+  const { openNewProject, openImport } = useUI();
   if (!db) return <Loading />;
 
   return (
@@ -22,9 +22,14 @@ export function ProjectsView() {
         title="Progetti"
         subtitle="Ogni progetto è una stanza con il suo team di agenti. Cliccane uno per entrare."
         actions={
-          <button className="btn btn-primary" onClick={openNewProject}>
-            <Plus size={16} /> Nuovo progetto
-          </button>
+          <>
+            <button className="btn" onClick={openImport}>
+              <FolderInput size={16} /> Importa progetti esistenti
+            </button>
+            <button className="btn btn-primary" onClick={openNewProject}>
+              <Plus size={16} /> Nuovo progetto
+            </button>
+          </>
         }
       />
       {db.projects.length === 0 ? (

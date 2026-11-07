@@ -7,7 +7,7 @@
  * FASE 2: start/finish dei job chiameranno Claude Agent SDK sul repo del progetto
  * (branch + PR), lasciando invariato tutto il resto (approvazioni, log, stanze).
  */
-import type { Action, Agent, AgentRole, Approval, DB, LogLevel, Priority, Project, Task } from "./types";
+import type { Action, Agent, AgentRole, Approval, DB, ImportInput, LogLevel, Priority, Project, Quote, StudioSettings, Task } from "./types";
 import { KIND_LABEL, PROJECT_COLORS, ROLES, WORKER_ROLES, coverRole, packsFor, teamFor } from "./skills";
 import { analyzeRequest, detectKind, planFromBlueprint } from "./analyze";
 import { defaultTemplateFor } from "./templates";
@@ -281,8 +281,132 @@ export function reduce(db: DB, action: Action, now: number): DB {
       fresh.vaultMeta = db.vaultMeta;
       return fresh;
     }
+    case "importProjects": {
+      for (const inp of action.projects.slice(0, 30)) importProject(db, inp, now);
+      break;
+    }
+    case "saveLead": {
+      const l = action.lead;
+      const existing = l.id ? db.leads.find((x) => x.id === l.id) : undefined;
+      const clean = {
+        name: l.name.slice(0, 100),
+        company: l.company?.slice(0, 100),
+        email: l.email?.slice(0, 120),
+        phone: l.phone?.slice(0, 40),
+        source: l.source?.slice(0, 60),
+        kind: l.kind,
+        value: Number.isFinite(l.value) ? Math.max(0, Number(l.value)) : undefined,
+        stage: l.stage ?? existing?.stage ?? "new",
+        notes: l.notes?.slice(0, 2000),
+        nextStep: l.nextStep?.slice(0, 200),
+        nextDate: l.nextDate || undefined,
+      };
+      if (existing) Object.assign(existing, clean, { updatedAt: now });
+      else db.leads.unshift({ id: uid("ld_"), ...clean, createdAt: now, updatedAt: now });
+      break;
+    }
+    case "deleteLead": {
+      db.leads = db.leads.filter((l) => l.id !== action.id);
+      break;
+    }
+    case "convertLead": {
+      const l = db.leads.find((x) => x.id === action.id);
+      if (!l || l.projectId) break;
+      const q = db.quotes.filter((x) => x.leadId === l.id).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      const kind = l.kind ?? q?.kind ?? "website";
+      const p = createProject(db, { name: l.company || l.name, client: l.company ? l.name : l.name, description: l.notes?.split("\n")[0]?.slice(0, 200) ?? "", kind, status: "planned", price: q ? quoteTotal(q) : l.value ?? 0 }, now);
+      p.clientEmail = l.email;
+      p.clientPhone = l.phone;
+      if (q) {
+        q.projectId = p.id;
+        q.status = "accepted";
+      }
+      l.stage = "won";
+      l.projectId = p.id;
+      l.updatedAt = now;
+      log(db, p.id, "me", `Nuovo cliente acquisito dalla pipeline: ${l.name}`, "success", now);
+      break;
+    }
+    case "saveQuote": {
+      const q = action.quote;
+      const existing = q.id ? db.quotes.find((x) => x.id === q.id) : undefined;
+      const items = q.items.slice(0, 60).map((i) => ({ id: i.id || uid("qi_"), label: String(i.label).slice(0, 200), hours: Math.max(0, Number(i.hours) || 0) }));
+      const base = {
+        title: q.title.slice(0, 140),
+        client: q.client.slice(0, 120),
+        clientEmail: q.clientEmail?.slice(0, 120),
+        kind: q.kind,
+        projectId: q.projectId,
+        leadId: q.leadId,
+        items,
+        rate: Math.max(0, Number(q.rate ?? db.studio.rate) || 0),
+        discount: Math.min(100, Math.max(0, Number(q.discount) || 0)),
+        notes: (q.notes ?? "").slice(0, 3000),
+        validDays: Math.max(1, Number(q.validDays) || 30),
+        status: q.status ?? existing?.status ?? "draft",
+      };
+      if (existing) Object.assign(existing, base, { updatedAt: now });
+      else {
+        const year = new Date(now).getFullYear();
+        const n = db.quotes.filter((x) => x.number.startsWith(`${year}-`)).length + 1;
+        db.quotes.unshift({ id: q.id || uid("q_"), number: `${year}-${String(n).padStart(3, "0")}`, ...base, createdAt: now, updatedAt: now });
+      }
+      if (q.leadId && (base.status === "sent" || base.status === "draft")) {
+        const l = db.leads.find((x) => x.id === q.leadId);
+        if (l && (l.stage === "new" || l.stage === "contacted")) l.stage = "quote";
+      }
+      break;
+    }
+    case "deleteQuote": {
+      db.quotes = db.quotes.filter((q) => q.id !== action.id);
+      break;
+    }
+    case "updateStudio": {
+      Object.assign(db.studio, action.patch);
+      break;
+    }
   }
   return db;
+}
+
+export const DEFAULT_STUDIO: StudioSettings = {
+  name: "MDS Project Studio",
+  owner: "",
+  email: "",
+  rate: 35,
+  vatNote: "Importi IVA esclusa, se dovuta.",
+  quoteFooter: "Il preventivo include sviluppo, test e pubblicazione. Pagamento: 50% all'avvio, 50% alla consegna.",
+};
+
+/** Porta i dati salvati con versioni precedenti alla struttura attuale. */
+export function normalizeDB(db: DB): DB {
+  db.leads ??= [];
+  db.quotes ??= [];
+  db.studio = { ...DEFAULT_STUDIO, ...(db.studio ?? {}) };
+  return db;
+}
+
+export function quoteTotal(q: Pick<Quote, "items" | "rate" | "discount">): number {
+  const sub = q.items.reduce((s, i) => s + i.hours * q.rate, 0);
+  return Math.round(sub * (1 - q.discount / 100));
+}
+
+function importProject(db: DB, inp: ImportInput, now: number) {
+  const p = createProject(db, { name: inp.name, client: inp.client, description: inp.description, kind: inp.kind, status: inp.status, deadline: inp.deadline, price: 0 }, now);
+  p.imported = true;
+  p.agentsMode = inp.agentsMode;
+  p.repoUrl = inp.repoUrl?.slice(0, 300);
+  p.localPath = inp.localPath?.slice(0, 400);
+  p.price = Math.max(0, Number(inp.price) || 0);
+  if (inp.doc?.text?.trim()) {
+    p.blueprint = { name: inp.doc.name.slice(0, 120), text: inp.doc.text.slice(0, 60_000), uploadedAt: now, ...detect(inp.doc.text) };
+    p.analysis = "done"; // progetto già avviato: niente piano automatico
+  }
+  inp.tasks.slice(0, 200).forEach((t, i) => addTask(db, p, { title: t.title.slice(0, 200), assignee: "me", status: t.done ? "done" : "todo", gate: false, source: "manual" }, now + i));
+  const paid = Math.min(p.price || Infinity, Math.max(0, Number(inp.paid) || 0));
+  if (paid > 0) db.payments.push({ id: uid("pay_"), projectId: p.id, label: "Già incassato", amount: paid, status: "paid", paidAt: now });
+  if (p.price - paid > 0) db.payments.push({ id: uid("pay_"), projectId: p.id, label: "Da saldare", amount: p.price - paid, dueDate: p.deadline, status: "due" });
+  log(db, p.id, "me", `Progetto importato${p.localPath ? ` da ${p.localPath}` : ""}: ${inp.tasks.length} task`, "success", now);
 }
 
 function resolveApproval(db: DB, id: string, decision: "approved" | "rejected", now: number) {
@@ -384,7 +508,23 @@ export function advance(db: DB, now: number): boolean {
     const team = db.agents.filter((a) => a.projectId === p.id);
     const roles = team.map((a) => a.role);
     const get = (r: AgentRole) => team.find((a) => a.role === r);
-    const active = p.status === "active";
+    const active = p.status === "active" && p.agentsMode !== "off";
+
+    /* --- Canone di manutenzione: una rata al mese, generata da sola --- */
+    const m = p.maintenance;
+    if (m?.active && m.monthly > 0) {
+      const ym = new Date(now).toISOString().slice(0, 7);
+      if (ym >= m.since) {
+        const [y, mo] = ym.split("-");
+        const label = `Canone ${mo}/${y}`;
+        if (!db.payments.some((x) => x.projectId === p.id && x.label === label)) {
+          const day = String(Math.min(28, Math.max(1, m.day || 1))).padStart(2, "0");
+          db.payments.push({ id: uid("pay_"), projectId: p.id, label, amount: m.monthly, dueDate: `${ym}-${day}`, status: "due" });
+          log(db, p.id, "system", `Rata di manutenzione generata: ${label} (€ ${m.monthly})`, "info", now);
+          changed = true;
+        }
+      }
+    }
     const pendingErr = db.approvals.some((a) => a.projectId === p.id && a.status === "pending" && a.kind === "error");
 
     /* --- Analista: blueprint -> piano --- */
@@ -568,7 +708,9 @@ export function advance(db: DB, now: number): boolean {
           ? `In pausa: ${p.waitingReason || "aspettiamo il cliente"}`
           : p.status === "done"
             ? "Progetto consegnato"
-            : working
+            : p.agentsMode === "off" && !working
+              ? "Team in pausa: ci lavori tu con Claude Code"
+              : working
               ? `Coordino ${working} agenti · ${queue} task in coda`
               : queue
                 ? `${queue} task in coda`
@@ -617,6 +759,7 @@ Gestionale per attività con clienti, abbonamenti e prenotazioni.
 export function seedDB(now: number, demo = true): DB {
   const db: DB = {
     projects: [], tasks: [], agents: [], requests: [], approvals: [], logs: [], payments: [], inbox: [], vault: [], vaultMeta: null, library: [],
+    leads: [], quotes: [], studio: { ...DEFAULT_STUDIO },
     meta: { seed: 1337, version: 1 },
   };
   const ago = (min: number) => now - min * 60_000;

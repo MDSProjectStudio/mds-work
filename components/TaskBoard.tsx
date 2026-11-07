@@ -9,6 +9,7 @@ import { ROLES } from "@/lib/skills";
 import { fmtDate, today } from "@/lib/selectors";
 import type { AgentRole, Priority, Project, Task, TaskStatus } from "@/lib/types";
 import { Sprite } from "./Sprite";
+import { BriefButton } from "./BriefButton";
 
 const COLS: { key: string; label: string; statuses: TaskStatus[]; color: string }[] = [
   { key: "todo", label: "Da fare", statuses: ["todo"], color: "#38bdf8" },
@@ -26,7 +27,7 @@ const PRIO: Record<Priority, { label: string; color: string }> = {
 
 const NEXT: Partial<Record<TaskStatus, TaskStatus>> = { todo: "doing", doing: "done" };
 
-function TaskCard({ t }: { t: Task }) {
+function TaskCard({ t, project }: { t: Task; project: Project }) {
   const { dispatch } = useDB();
   const mine = t.assignee === "me";
   const late = t.due && t.due < today() && t.status !== "done";
@@ -58,6 +59,7 @@ function TaskCard({ t }: { t: Task }) {
         )}
         {t.gate && !mine && t.status !== "done" && <span className="chip !py-0 !text-[10px] !text-amber">serve ok</span>}
         <div className="ml-auto flex gap-1 opacity-60 transition group-hover:opacity-100">
+          {t.status !== "done" && <BriefButton project={project} task={t} compact />}
           {mine && NEXT[t.status] && (
             <button className="btn btn-sm !p-1" onClick={() => dispatch({ type: "updateTask", id: t.id, patch: { status: NEXT[t.status] } })} aria-label="Avanza">
               {NEXT[t.status] === "done" ? <Check size={12} /> : <ArrowRight size={12} />}
@@ -121,7 +123,7 @@ export function TaskBoard({ project }: { project: Project }) {
                   <span className="mono ml-auto text-[11px] text-muted">{list.length}</span>
                 </div>
                 <div className="space-y-2">
-                  <AnimatePresence initial={false}>{list.map((t) => <TaskCard key={t.id} t={t} />)}</AnimatePresence>
+                  <AnimatePresence initial={false}>{list.map((t) => <TaskCard key={t.id} t={t} project={project} />)}</AnimatePresence>
                 </div>
               </div>
             );

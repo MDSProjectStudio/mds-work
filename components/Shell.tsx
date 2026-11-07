@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
-import { Bell, FolderKanban, Inbox, KeyRound, Library, LogOut, Menu, Plus, Search, ShieldCheck, Sun, Wallet, X } from "lucide-react";
+import { Bell, FileText, FolderKanban, Handshake, Inbox, KeyRound, Library, LogOut, Menu, Plus, Search, ShieldCheck, Sun, Wallet, X } from "lucide-react";
 import { authEnabled } from "@/lib/supabase/config";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { useDB } from "@/lib/client";
@@ -14,13 +14,15 @@ import { ProjectDot } from "./ui";
 import { Sprite } from "./Sprite";
 import { CommandPalette } from "./CommandPalette";
 import { NewProjectModal } from "./NewProjectModal";
+import { ImportProjectsModal } from "./ImportProjectsModal";
 import { Chatbot } from "./Chatbot";
 
-const UIContext = createContext<{ openNewProject: () => void; openPalette: () => void }>({ openNewProject: () => {}, openPalette: () => {} });
+const UIContext = createContext<{ openNewProject: () => void; openPalette: () => void; openImport: () => void }>({ openNewProject: () => {}, openPalette: () => {}, openImport: () => {} });
 export const useUI = () => useContext(UIContext);
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const [newOpen, setNewOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [palette, setPalette] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const pathname = usePathname();
@@ -39,7 +41,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => setMobileNav(false), [pathname]);
 
   return (
-    <UIContext.Provider value={{ openNewProject: () => setNewOpen(true), openPalette: () => setPalette(true) }}>
+    <UIContext.Provider value={{ openNewProject: () => setNewOpen(true), openPalette: () => setPalette(true), openImport: () => setImportOpen(true) }}>
       <div className="flex min-h-screen">
         <aside className="sticky top-0 hidden h-screen w-[264px] flex-none p-3 lg:block">
           <Sidebar />
@@ -59,7 +61,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-24 pt-2 sm:px-6 lg:px-8">{children}</main>
         </div>
       </div>
-      <CommandPalette open={palette} onClose={() => setPalette(false)} onNewProject={() => setNewOpen(true)} />
+      <CommandPalette open={palette} onClose={() => setPalette(false)} onNewProject={() => setNewOpen(true)} onImport={() => setImportOpen(true)} />
+      <ImportProjectsModal open={importOpen} onClose={() => setImportOpen(false)} />
       <NewProjectModal open={newOpen} onClose={() => setNewOpen(false)} />
       <Chatbot />
     </UIContext.Provider>
@@ -121,6 +124,11 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
           <NavItem href="/approvals" icon={<ShieldCheck size={17} />} label="Approvazioni" badge={pending} badgeColor="#fbbf24" />
           <NavItem href="/inbox" icon={<Inbox size={17} />} label="Inbox" badge={db?.inbox.length} />
           <NavItem href="/payments" icon={<Wallet size={17} />} label="Incassi" badge={late} badgeColor="#fb7185" />
+        </div>
+        <div>
+          <div className="kicker px-3 pb-1.5">Clienti</div>
+          <NavItem href="/pipeline" icon={<Handshake size={17} />} label="Pipeline" badge={db?.leads.filter((l) => l.stage !== "won" && l.stage !== "lost").length} badgeColor="#a78bfa" />
+          <NavItem href="/quotes" icon={<FileText size={17} />} label="Preventivi" />
         </div>
         <div>
           <div className="kicker px-3 pb-1.5">Studio</div>

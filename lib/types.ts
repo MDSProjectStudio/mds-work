@@ -34,6 +34,91 @@ export interface Project {
   token: string;
   createdAt: number;
   doneAt?: number;
+  /** "off" = agenti simulati in pausa (progetti reali su cui lavori con Claude Code) */
+  agentsMode?: "sim" | "off";
+  imported?: boolean;
+  repoUrl?: string;
+  localPath?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  maintenance?: Maintenance;
+}
+
+export interface Maintenance {
+  monthly: number;
+  since: string; // YYYY-MM
+  day: number; // giorno di scadenza della rata
+  active: boolean;
+}
+
+export type LeadStage = "new" | "contacted" | "quote" | "won" | "lost";
+
+export interface Lead {
+  id: string;
+  name: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  source?: string;
+  kind?: ProjectKind;
+  value?: number;
+  stage: LeadStage;
+  notes?: string;
+  nextStep?: string;
+  nextDate?: string;
+  projectId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface QuoteItem {
+  id: string;
+  label: string;
+  hours: number;
+}
+
+export interface Quote {
+  id: string;
+  number: string;
+  title: string;
+  client: string;
+  clientEmail?: string;
+  kind: ProjectKind;
+  projectId?: string;
+  leadId?: string;
+  items: QuoteItem[];
+  rate: number;
+  discount: number; // percentuale
+  notes: string;
+  validDays: number;
+  status: "draft" | "sent" | "accepted" | "rejected";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StudioSettings {
+  name: string;
+  owner: string;
+  email: string;
+  rate: number;
+  vatNote: string;
+  quoteFooter: string;
+}
+
+export interface ImportInput {
+  name: string;
+  client: string;
+  description: string;
+  kind: ProjectKind;
+  status: ProjectStatus;
+  deadline?: string;
+  price: number;
+  paid: number;
+  repoUrl?: string;
+  localPath?: string;
+  doc?: { name: string; text: string };
+  tasks: { title: string; done: boolean }[];
+  agentsMode: "sim" | "off";
 }
 
 export interface Task {
@@ -156,12 +241,22 @@ export interface DB {
   vault: VaultEntry[];
   vaultMeta: VaultMeta | null;
   library: LibraryBlueprint[];
+  leads: Lead[];
+  quotes: Quote[];
+  studio: StudioSettings;
   meta: { seed: number; version: number };
 }
 
 export type Action =
   | { type: "addProject"; project: { name: string; client: string; description: string; kind: ProjectKind; deadline?: string; price: number; status: ProjectStatus; templateId?: string; blueprint?: { name: string; text: string } } }
-  | { type: "updateProject"; id: string; patch: Partial<Pick<Project, "name" | "client" | "status" | "waitingReason" | "description" | "deadline" | "price" | "templateId" | "kind">> }
+  | { type: "updateProject"; id: string; patch: Partial<Pick<Project, "name" | "client" | "status" | "waitingReason" | "description" | "deadline" | "price" | "templateId" | "kind" | "agentsMode" | "repoUrl" | "localPath" | "clientEmail" | "clientPhone" | "maintenance">> }
+  | { type: "importProjects"; projects: ImportInput[] }
+  | { type: "saveLead"; lead: Partial<Lead> & { name: string } }
+  | { type: "deleteLead"; id: string }
+  | { type: "convertLead"; id: string }
+  | { type: "saveQuote"; quote: Partial<Quote> & { title: string; client: string; kind: ProjectKind; items: QuoteItem[] } }
+  | { type: "deleteQuote"; id: string }
+  | { type: "updateStudio"; patch: Partial<StudioSettings> }
   | { type: "deleteProject"; id: string }
   | { type: "reanalyze"; id: string; blueprint?: { name: string; text: string } }
   | { type: "addTask"; projectId: string; title: string; priority?: Priority; due?: string; assignee?: "me" | AgentRole; detail?: string }

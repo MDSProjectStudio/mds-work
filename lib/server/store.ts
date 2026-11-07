@@ -2,7 +2,7 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import type { DB } from "../types";
-import { seedDB } from "../engine";
+import { normalizeDB, seedDB } from "../engine";
 import { authEnabled } from "../supabase/config";
 import { currentOwner, supabaseAdmin } from "../supabase/server";
 
@@ -27,12 +27,12 @@ function readLocal(): DB | null {
 
 export async function loadDB(): Promise<DB> {
   if (!cloud()) {
-    g.__mdsDB ??= readLocal() ?? seedDB(Date.now());
+    g.__mdsDB ??= normalizeDB(readLocal() ?? seedDB(Date.now()));
     return g.__mdsDB;
   }
   const { data, error } = await supabaseAdmin().from("app_state").select("data").eq("id", 1).maybeSingle();
   if (error) throw new Error(`Supabase: ${error.message}`);
-  if (data?.data) return data.data as DB;
+  if (data?.data) return normalizeDB(data.data as DB);
   // primo avvio online: dashboard pulita, senza progetti demo
   const fresh = seedDB(Date.now(), false);
   await saveDB(fresh);

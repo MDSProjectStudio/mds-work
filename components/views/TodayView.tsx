@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
-import { ArrowUpRight, Bot, Check, CircleDollarSign, FolderKanban, Inbox, ListTodo, ShieldCheck, Wallet } from "lucide-react";
+import { ArrowUpRight, Bot, Handshake, Check, CircleDollarSign, FolderKanban, Inbox, ListTodo, ShieldCheck, Wallet } from "lucide-react";
 import { useDB } from "@/lib/client";
 import { focusItems, fmtDate, fmtMoney, greeting, money, pendingApprovals, projectById, daysTo } from "@/lib/selectors";
 import { ApprovalCard } from "../ApprovalCard";
@@ -54,7 +54,7 @@ export function TodayView() {
                 {focus.slice(0, 7).map((f) => {
                   const p = projectById(db, f.projectId);
                   const color = f.kind === "approval" ? "#fbbf24" : f.kind === "payment" ? "#a3e635" : f.score >= 80 ? "#fb7185" : "#22d3ee";
-                  const Icon = f.kind === "approval" ? ShieldCheck : f.kind === "payment" ? CircleDollarSign : ListTodo;
+                  const Icon = f.kind === "approval" ? ShieldCheck : f.kind === "payment" ? CircleDollarSign : f.kind === "request" ? Handshake : ListTodo;
                   return (
                     <motion.div key={f.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 30 }} className="group flex items-center gap-3 rounded-xl border border-line bg-white/[0.02] px-3 py-2.5 transition hover:border-line2 hover:bg-white/[0.04]">
                       <span className="grid h-8 w-8 flex-none place-items-center rounded-lg border" style={{ color, borderColor: color + "44", background: color + "12" }}>
@@ -80,6 +80,11 @@ export function TodayView() {
                         <button className="btn btn-sm btn-ok" onClick={() => dispatch({ type: "markPaid", id: f.id })}>
                           Incassato
                         </button>
+                      )}
+                      {f.kind === "request" && (
+                        <Link href="/pipeline" className="btn btn-sm">
+                          Apri <ArrowUpRight size={13} />
+                        </Link>
                       )}
                       {f.kind === "approval" && (
                         <Link href="/approvals" className="btn btn-sm">

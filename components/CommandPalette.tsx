@@ -16,7 +16,7 @@ interface Item {
   run: () => void;
 }
 
-export function CommandPalette({ open, onClose, onNewProject }: { open: boolean; onClose: () => void; onNewProject: () => void }) {
+export function CommandPalette({ open, onClose, onNewProject, onImport }: { open: boolean; onClose: () => void; onNewProject: () => void; onImport: () => void }) {
   const { db, dispatch } = useDB();
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -38,6 +38,9 @@ export function CommandPalette({ open, onClose, onNewProject }: { open: boolean;
     };
     const base: Item[] = [
       { id: "new", label: "Nuovo progetto", hint: "azione", icon: <Plus size={15} />, run: () => { onClose(); onNewProject(); } },
+      { id: "import", label: "Importa progetti già avviati", hint: "azione", icon: <FolderKanban size={15} />, run: () => { onClose(); onImport(); } },
+      { id: "pipeline", label: "Pipeline clienti", hint: "pagina", icon: <Inbox size={15} />, run: go("/pipeline") },
+      { id: "quotes", label: "Preventivi", hint: "pagina", icon: <Library size={15} />, run: go("/quotes") },
       { id: "today", label: "Oggi", hint: "pagina", icon: <Sun size={15} />, run: go("/") },
       { id: "projects", label: "Progetti", hint: "pagina", icon: <FolderKanban size={15} />, run: go("/projects") },
       { id: "approvals", label: "Approvazioni", hint: "pagina", icon: <ShieldCheck size={15} />, run: go("/approvals") },
@@ -61,7 +64,7 @@ export function CommandPalette({ open, onClose, onNewProject }: { open: boolean;
         },
       });
     return filtered;
-  }, [q, db, router, onClose, onNewProject, dispatch]);
+  }, [q, db, router, onClose, onNewProject, onImport, dispatch]);
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(items.length - 1, s + 1)); }

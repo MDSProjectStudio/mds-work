@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Check, Copy, ExternalLink, Inbox, KeyRound, LayoutGrid, ListTodo, Sparkles, Trash, Wallet } from "lucide-react";
+import { ArrowLeft, Check, Copy, ExternalLink, FolderOpen, GitBranch, Inbox, KeyRound, LayoutGrid, ListTodo, MessageSquare, CirclePause, Settings2, Sparkles, Trash, Wallet } from "lucide-react";
 import { useDB } from "@/lib/client";
 import { KIND_LABEL, ROLES } from "@/lib/skills";
 import { fmtDate, fmtRel, pendingApprovals, progressOf } from "@/lib/selectors";
@@ -17,6 +17,9 @@ import { TaskBoard } from "../TaskBoard";
 import { BlueprintTab } from "../BlueprintTab";
 import { PaymentsList } from "./PaymentsView";
 import { VaultPanel } from "../vault/VaultPanel";
+import { ProjectSettings } from "../ProjectSettings";
+import { MessagesPanel } from "../MessagesPanel";
+import { BriefButton } from "../BriefButton";
 import { Card, Empty, Loading, Progress, SectionTitle, StatusBadge } from "../ui";
 
 const TABS = [
@@ -25,7 +28,9 @@ const TABS = [
   { key: "requests", label: "Richieste clienti", icon: Inbox },
   { key: "blueprint", label: "Blueprint & skill", icon: Sparkles },
   { key: "money", label: "Incassi", icon: Wallet },
+  { key: "messages", label: "Messaggi", icon: MessageSquare },
   { key: "accounts", label: "Account", icon: KeyRound },
+  { key: "settings", label: "Impostazioni", icon: Settings2 },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -78,10 +83,16 @@ export function ProjectView({ id }: { id: string }) {
                 <StatusBadge status={p.status} />
                 {p.deadline && <span className="chip">consegna {fmtDate(p.deadline)}</span>}
                 <span className="chip">{prog}% completato</span>
+                {p.agentsMode === "off" && <span className="chip !text-amber"><CirclePause size={11} /> agenti in pausa</span>}
+                {p.repoUrl && /^https?:\/\//.test(p.repoUrl) && (
+                  <a className="chip hover:border-neon/60" href={p.repoUrl} target="_blank" rel="noreferrer"><GitBranch size={11} /> repo</a>
+                )}
+                {p.localPath && <span className="chip max-w-[260px]" title={p.localPath}><FolderOpen size={11} /> <span className="truncate">{p.localPath}</span></span>}
               </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <BriefButton project={p} className="!py-2" />
             <select className="field !w-auto !py-2 text-sm" value={p.status} onChange={(e) => dispatch({ type: "updateProject", id: p.id, patch: { status: e.target.value as ProjectStatus } })}>
               <option value="planned">Da iniziare</option>
               <option value="active">In corso</option>
@@ -223,6 +234,8 @@ export function ProjectView({ id }: { id: string }) {
           {tab === "blueprint" && <BlueprintTab project={p} />}
           {tab === "money" && <PaymentsList projectId={p.id} />}
           {tab === "accounts" && <VaultPanel projectId={p.id} />}
+          {tab === "messages" && <MessagesPanel project={p} portal={portal} />}
+          {tab === "settings" && <ProjectSettings key={p.id} project={p} />}
         </motion.div>
       </AnimatePresence>
 

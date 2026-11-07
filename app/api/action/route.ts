@@ -6,6 +6,7 @@ const ALLOWED = new Set<Action["type"]>([
   "addProject", "updateProject", "deleteProject", "reanalyze", "addTask", "updateTask", "deleteTask",
   "resolveApproval", "addInbox", "removeInbox", "inboxToTask", "addPayment", "markPaid", "deletePayment",
   "vaultInit", "vaultSave", "vaultDelete", "saveLibrary", "deleteLibrary", "resetDemo",
+  "importProjects", "saveLead", "deleteLead", "convertLead", "saveQuote", "deleteQuote", "updateStudio",
 ]);
 
 export async function POST(req: Request) {

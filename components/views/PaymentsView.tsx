@@ -5,7 +5,7 @@ import { useState } from "react";
 import clsx from "clsx";
 import { Check, CircleDollarSign, Clock, Plus, Trash, Wallet } from "lucide-react";
 import { useDB } from "@/lib/client";
-import { daysTo, fmtDate, fmtMoney, money, today } from "@/lib/selectors";
+import { daysTo, fmtDate, fmtMoney, money, mrr, today } from "@/lib/selectors";
 import { Card, Loading, PageHeader, ProjectDot, Progress, SectionTitle, Stat } from "../ui";
 
 export function PaymentsList({ projectId }: { projectId?: string }) {
@@ -89,7 +89,7 @@ export function PaymentsView() {
         <Stat label="Incassato" value={fmtMoney(m.paid)} icon={<Check size={16} />} color="#a3e635" />
         <Stat label="Da incassare" value={fmtMoney(m.due)} icon={<Wallet size={16} />} delay={0.05} />
         <Stat label="In ritardo" value={fmtMoney(m.late)} sub={`${m.lateCount} pagamenti`} icon={<Clock size={16} />} color="#fb7185" delay={0.1} />
-        <Stat label="Valore progetti" value={fmtMoney(portfolio)} sub={`${db.projects.length} progetti`} icon={<CircleDollarSign size={16} />} color="#a78bfa" delay={0.15} />
+        <Stat label="Canoni mensili" value={fmtMoney(mrr(db))} sub={`${fmtMoney(mrr(db) * 12)}/anno · progetti ${fmtMoney(portfolio)}`} icon={<CircleDollarSign size={16} />} color="#a78bfa" delay={0.15} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1.3fr]">
         <Card className="p-4 sm:p-5">
