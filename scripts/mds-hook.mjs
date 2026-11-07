@@ -16,7 +16,18 @@ import { dashboardRole, ROLE_NAMES, supabase } from "./lib-supabase.mjs";
 
 const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|astro|css|scss|sass|less|html|py|go|rs|java|kt|cs|php|rb|swift|dart|sql|lua|gd|gdscript|luau|prisma)$/i;
 const UI_EXT = /\.(tsx|jsx|vue|svelte|astro|css|scss|sass|less|html)$/i;
-const VERIFY_CMD = /((npm|pnpm|yarn|bun)\s+(run\s+)?(test|lint|typecheck|type-check|check|build|e2e|verify)\b|\btsc\b|next\s+(build|lint)|vitest|jest|playwright\s+test|\beslint\b|pytest|cargo\s+(test|check|build)|go\s+(test|build|vet)|dotnet\s+(test|build)|expo\s+lint|node\s+node_modules\/(typescript|next|eslint))/i;
+// Un comando conta come verifica solo se UNO DEI SUOI PASSI inizia con un comando di verifica.
+// Prima si tolgono i corpi heredoc e le stringhe: un `cat > file <<EOF ... npm test ... EOF` non è una verifica.
+const VERIFY_START = /^((npm|pnpm|yarn|bun)\s+(run\s+)?(test|lint|typecheck|type-check|check|build|e2e|verify)\b|npx\s+(tsc|vitest|jest|eslint|playwright\s+test|next\s+(build|lint))\b|tsc\b|next\s+(build|lint)\b|vitest\b|jest\b|playwright\s+test\b|eslint\b|pytest\b|python\s+-m\s+pytest\b|cargo\s+(test|check|build)\b|go\s+(test|build|vet)\b|dotnet\s+(test|build)\b|expo\s+lint\b|node\s+(--test\b|node_modules\/(typescript|next|eslint|vitest|jest)\b))/i;
+export function isVerifyCommand(cmd) {
+  const clean = String(cmd ?? "")
+    .replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(\n|$)/g, "\n")
+    .replace(/"(\\.|[^"\\])*"|'[^']*'/g, '""');
+  return clean
+    .split(/&&|\|\||;|\||\n/)
+    .map((s) => s.trim().replace(/^([A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, ""))
+    .some((s) => VERIFY_START.test(s));
+}
 const CORRECTION = /\b(non (cos[iì]|così|va bene|mi piace|era questo)|sbagliat[oaie]|ti avevo detto|te l'avevo detto|d'ora in poi|da ora in poi|non farlo pi[uù]|non devi|ricordati|ricordatelo|ancora una volta|di nuovo lo stesso errore|avevo chiesto)\b/i;
 
 const done = () => process.exit(0);
@@ -55,6 +66,46 @@ const writeJSON = (p, v) => {
 };
 const agentName = (t) => String(t ?? "").split(":").pop();
 
+/** Chiusura di un incarico: per Sentinel legge il verdetto e, se FAIL, ricorda ad Atlas il ciclo di correzione. */
+function finishSubagent(out, sub, what, resp, now, hookEventName, add, tele) {
+  const role = dashboardRole(sub);
+  if (sub !== "mds-qa") {
+    add(role, "idle", `Consegnato: ${what}`, "success");
+    tele({ subagent: sub, phase: "end" });
+    return;
+  }
+  const verdict = String(resp).match(/"?verdict"?\s*[:=]\s*"?(PASS_WITH_WARNINGS|PASS|FAIL)/i)?.[1]?.toUpperCase() ?? "UNKNOWN";
+  out.session.lastQaAt = now;
+  out.session.lastVerdict = verdict;
+  out.session.qaCycles = (out.session.qaCycles ?? 0) + (verdict === "FAIL" ? 1 : 0);
+  add("qa", "idle", `Verdetto Sentinel: ${verdict}`, verdict === "FAIL" ? "error" : verdict === "PASS" ? "success" : "warn");
+  tele({ subagent: sub, phase: "end", verdict });
+  if (verdict !== "FAIL") return;
+  const msg =
+    out.session.qaCycles >= 3
+      ? "MDS: Sentinel ha dato FAIL per la 3ª volta. Fermati: riassumi al titolare i problemi aperti e chiedi come procedere."
+      : "MDS: Sentinel FAIL. Crea un nodo di correzione nel task graph per ogni finding critical/high, assegnalo all'owner indicato, poi richiama mds-qa sugli stessi casi (ciclo di correzione).";
+  // PostToolUse accetta contesto aggiuntivo; per SubagentStop il promemoria resta in sessione e arriva al prossimo Stop/prompt.
+  if (hookEventName) out.stdout = JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: msg } });
+  else out.session.pendingNotice = msg;
+}
+
+/** Ultimo messaggio di un sub-agente dal suo transcript (consegna SubagentHandback o ultimo testo). */
+export function lastAgentMessage(transcriptPath) {
+  try {
+    const lines = fs.readFileSync(transcriptPath, "utf8").trim().split("\n").slice(-200);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const m = JSON.parse(lines[i]);
+      if (m.type !== "assistant" || !Array.isArray(m.message?.content)) continue;
+      for (const b of [...m.message.content].reverse()) {
+        if (b.type === "tool_use" && /handback/i.test(b.name) && b.input?.message) return String(b.input.message);
+        if (b.type === "text" && b.text?.trim()) return b.text;
+      }
+    }
+  } catch {}
+  return "";
+}
+
 /** Logica pura: aggiorna la sessione e decide output/eventi. Esportata per le eval. */
 export function handle(input, session, ctx = {}) {
   const now = ctx.now ?? Date.now();
@@ -72,6 +123,21 @@ export function handle(input, session, ctx = {}) {
     add("chief", "idle", "Sessione Claude Code aperta sul progetto");
     tele({});
     if (ctx.taskInProgress) out.stdout = `MDS: c'è un task in corso (${ctx.taskInProgress}). Prima di continuare segui la skill mds-stato: leggi .mds/state/current-task.json e progress.md, controlla git status/diff/log ed esegui un sanity test.`;
+  } else if (ev === "UserPromptSubmit" && /^\s*Another Claude session sent a message|<agent-message\b|\[Subagent hand-back\]/i.test(String(input.prompt ?? ""))) {
+    // Non è il titolare: è il rapporto finale di un agente in sottofondo che torna ad Atlas.
+    const text = String(input.prompt);
+    const bg = out.session.bg ?? {};
+    const id = text.match(/<agent-message\s+from="([\w-]+)"/)?.[1];
+    if (id && bg[id]) {
+      const { sub, what } = bg[id];
+      const rest = { ...bg };
+      delete rest[id];
+      out.session.bg = rest;
+      finishSubagent(out, sub, what, text, now, null, add, tele);
+    } else {
+      add("chief", "working", "Atlas riceve il rapporto di un agente");
+      tele({ handback: id ?? true });
+    }
   } else if (ev === "UserPromptSubmit") {
     add("chief", "working", "Nuovo lavoro ricevuto dal titolare");
     const isCorrection = CORRECTION.test(String(input.prompt ?? ""));
@@ -89,28 +155,29 @@ export function handle(input, session, ctx = {}) {
       out.session.agents = [...new Set([...(out.session.agents ?? []), sub])];
       tele({ subagent: sub, phase: "start" });
     } else {
-      const resp = typeof input.tool_response === "string" ? input.tool_response : JSON.stringify(input.tool_response ?? "");
-      if (sub === "mds-qa") {
-        const verdict = resp.match(/"?verdict"?\s*[:=]\s*"?(PASS_WITH_WARNINGS|PASS|FAIL)/i)?.[1]?.toUpperCase() ?? "UNKNOWN";
-        out.session.lastQaAt = now;
-        out.session.lastVerdict = verdict;
-        out.session.qaCycles = (out.session.qaCycles ?? 0) + (verdict === "FAIL" ? 1 : 0);
-        add("qa", "idle", `Verdetto Sentinel: ${verdict}`, verdict === "FAIL" ? "error" : verdict === "PASS" ? "success" : "warn");
-        tele({ subagent: sub, phase: "end", verdict });
-        if (verdict === "FAIL")
-          out.stdout = JSON.stringify({
-            hookSpecificOutput: {
-              hookEventName: "PostToolUse",
-              additionalContext:
-                out.session.qaCycles >= 3
-                  ? "MDS: Sentinel ha dato FAIL per la 3ª volta. Fermati: riassumi al titolare i problemi aperti e chiedi come procedere."
-                  : "MDS: Sentinel FAIL. Crea un nodo di correzione nel task graph per ogni finding critical/high, assegnalo all'owner indicato, poi richiama mds-qa sugli stessi casi (ciclo di correzione).",
-            },
-          });
+      const tr = input.tool_response;
+      const resp = typeof tr === "string" ? tr : JSON.stringify(tr ?? "");
+      const isAsync = ti.run_in_background === true || (tr && typeof tr === "object" && (tr.isAsync === true || tr.status === "async_launched")) || /async agent launched|async_launched/i.test(resp);
+      if (isAsync) {
+        // Agente in sottofondo: non è ancora finito. La consegna arriva con l'evento SubagentStop.
+        const agentId = (tr && typeof tr === "object" && tr.agentId) || resp.match(/agentId:\s*([\w-]+)/)?.[1] || `bg_${now}`;
+        out.session.bg = { ...(out.session.bg ?? {}), [agentId]: { sub, what, at: now } };
+        add(role, "working", `${ROLE_NAMES[role] ?? sub} lavora in sottofondo: ${what}`);
+        tele({ subagent: sub, phase: "background" });
       } else {
-        add(role, "idle", `Consegnato: ${what}`, "success");
-        tele({ subagent: sub, phase: "end" });
+        finishSubagent(out, sub, what, resp, now, "PostToolUse", add, tele);
       }
+    }
+  } else if (ev === "SubagentStop") {
+    // Fine reale di un agente lanciato in sottofondo (quelli sincroni sono già chiusi da PostToolUse).
+    const bg = out.session.bg ?? {};
+    const key = input.agent_id && bg[input.agent_id] ? input.agent_id : Object.keys(bg).find((k) => bg[k].sub === agentName(input.agent_type));
+    if (key) {
+      const { sub, what } = bg[key];
+      const rest = { ...bg };
+      delete rest[key];
+      out.session.bg = rest;
+      finishSubagent(out, sub, what, ctx.lastMessage ?? String(input.last_assistant_message ?? ""), now, null, add, tele);
     }
   } else if (ev === "PostToolUse" && ["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(tool)) {
     const file = String(ti.file_path || ti.notebook_path || "");
@@ -124,7 +191,7 @@ export function handle(input, session, ctx = {}) {
     tele({ tool, file: rel });
   } else if (ev === "PostToolUse" && tool === "Bash") {
     const cmd = String(ti.command ?? "");
-    if (VERIFY_CMD.test(cmd)) {
+    if (isVerifyCommand(cmd)) {
       out.session.lastVerifyAt = now;
       tele({ tool, verify: cmd.slice(0, 120) });
     }
@@ -132,10 +199,21 @@ export function handle(input, session, ctx = {}) {
     add("chief", "waiting", input.message || "Claude aspetta una tua risposta", "warn");
   } else if (ev === "Stop") {
     const s = out.session;
+    // agenti ancora al lavoro in sottofondo: Atlas sta solo aspettando, il gate scatterà alla chiusura vera
+    // (un agente in sottofondo senza notizie da 45 minuti si considera perso: non blocca il gate per sempre)
+    s.bg = Object.fromEntries(Object.entries(s.bg ?? {}).filter(([, b]) => now - (b.at ?? 0) < 45 * 60 * 1000));
+    const waitingBg = Object.keys(s.bg).length > 0;
     // ogni richiesta (verifiche / Sentinel) scatta una sola volta per gruppo di modifiche
     const needVerify = s.lastCodeEditAt && !(s.lastVerifyAt > s.lastCodeEditAt) && s.gateVerifyFor !== s.lastCodeEditAt;
     const needQa = s.lastUiEditAt && !(s.lastQaAt > s.lastUiEditAt) && s.gateQaFor !== s.lastUiEditAt;
-    if ((needVerify || needQa) && !input.stop_hook_active) {
+    if (s.pendingNotice && !input.stop_hook_active) {
+      out.stdout = JSON.stringify({ decision: "block", reason: s.pendingNotice });
+      delete s.pendingNotice;
+      tele({ gate: "notice" });
+    } else if (waitingBg) {
+      add("chief", "waiting", "Atlas aspetta gli agenti al lavoro in sottofondo");
+      tele({ gate: "waiting_background", background: Object.values(s.bg).map((b) => b.sub) });
+    } else if ((needVerify || needQa) && !input.stop_hook_active) {
       if (needVerify) s.gateVerifyFor = s.lastCodeEditAt;
       if (needQa) s.gateQaFor = s.lastUiEditAt;
       const steps = [];
@@ -167,7 +245,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const sessionPath = path.join(stateDir, "session.json");
       const task = readJSON(path.join(stateDir, "current-task.json"), null);
       const taskInProgress = task && !["done", "abandoned"].includes(task.status) ? `${task.id ?? ""} ${task.title ?? ""}`.trim() : null;
-      const res = handle(input, readJSON(sessionPath, {}), { root: proj.root, taskInProgress });
+      const lastMessage =
+        input.hook_event_name === "SubagentStop" && !input.last_assistant_message && input.agent_transcript_path ? lastAgentMessage(input.agent_transcript_path) : undefined;
+      const res = handle(input, readJSON(sessionPath, {}), { root: proj.root, taskInProgress, lastMessage });
       writeJSON(sessionPath, res.session);
       if (res.telemetry.length) {
         const tdir = path.join(proj.root, ".mds", "telemetry");

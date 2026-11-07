@@ -205,7 +205,12 @@ export function installProject(dir, { tipo = "website", template = "", id = "", 
   if (fs.existsSync(gi) || fs.existsSync(path.join(dir, ".git"))) {
     let cur = fs.existsSync(gi) ? fs.readFileSync(gi, "utf8") : "";
     cur = cur.replace(/\n?# MDS Work \(brief e collegamento dashboard\)\n\.mds\/\n?/, "\n");
-    if (!cur.includes("# MDS Work (file locali)")) cur = `${cur.trimEnd()}\n\n# MDS Work (file locali)\n.mds/brief.md\n.mds/state/\n.mds/telemetry/\n`;
+    // .playwright-mcp/ = screenshot e log di Sentinel (Playwright MCP): restano sul PC
+    const lines = [".mds/brief.md", ".mds/state/", ".mds/telemetry/", ".playwright-mcp/"];
+    if (!cur.includes("# MDS Work (file locali)")) cur = `${cur.trimEnd()}\n\n# MDS Work (file locali)\n`;
+    const have = new Set(cur.split(/\r?\n/).map((l) => l.trim()));
+    const missing = lines.filter((l) => !have.has(l));
+    if (missing.length) cur = cur.replace("# MDS Work (file locali)\n", `# MDS Work (file locali)\n${missing.join("\n")}\n`);
     fs.writeFileSync(gi, cur.trimStart());
   }
 
@@ -222,6 +227,7 @@ export function installProject(dir, { tipo = "website", template = "", id = "", 
     PostToolUse: [["Task|Agent", hook], ["Edit|Write|MultiEdit|NotebookEdit", hook], ["Bash", hook]],
     Notification: [["", hook]],
     Stop: [["", hook]],
+    SubagentStop: [["", hook]],
   };
   settings.hooks ??= {};
   for (const [event, list] of Object.entries(settings.hooks)) {

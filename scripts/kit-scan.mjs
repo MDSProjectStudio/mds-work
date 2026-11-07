@@ -15,19 +15,20 @@ const RULES = [
   { id: "prompt-injection", severity: "high", re: /(ignore|disregard|forget)\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions|rules|messages)|ignora\s+(tutte\s+)?le\s+istruzioni\s+precedenti/i, why: "Testo che tenta di annullare le istruzioni dell'agente" },
   { id: "hide-from-user", severity: "high", re: /(do not|don't|never)\s+(tell|inform|show|mention)\s+(this\s+to\s+)?the\s+user|without\s+(telling|informing)\s+the\s+user|non\s+dire\s+all'utente/i, why: "Istruzioni per nascondere azioni all'utente" },
   { id: "system-impersonation", severity: "medium", re: /<\/?(system|system-reminder|admin|important)>|\[\s*system\s*\]|as an? (system|administrator) message/i, why: "Finti messaggi di sistema (possibile tool poisoning)" },
-  { id: "invisible-chars", severity: "high", re: /[​-‏‪-‮⁠-⁤﻿]/, why: "Caratteri invisibili: possono nascondere istruzioni" },
+  { id: "invisible-chars", severity: "high", re: /[​-‏‪-‮⁠-⁤]/, why: "Caratteri invisibili: possono nascondere istruzioni" },
   { id: "long-base64", severity: "medium", re: /[A-Za-z0-9+/]{300,}={0,2}/, why: "Blob base64 lungo: contenuto offuscato" },
   // script pericolosi
-  { id: "pipe-to-shell", severity: "critical", re: /(curl|wget|iwr|Invoke-WebRequest)[^\n|]*\|\s*(sh|bash|zsh|iex|powershell|pwsh|python|node)\b/i, why: "Scarica ed esegue codice da internet" },
+  { id: "pipe-to-shell", severity: "critical", re: /(curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)[^\n|]*\|\s*(sh|bash|zsh|iex|Invoke-Expression|powershell|pwsh|python|node)\b/i, why: "Scarica ed esegue codice da internet" },
   { id: "encoded-powershell", severity: "critical", re: /powershell[^\n]*-(enc|encodedcommand)\b|Invoke-Expression|\biex\s*\(/i, why: "Esecuzione di codice offuscato" },
-  { id: "destructive-shell", severity: "high", re: /rm\s+-rf\s+(~|\/|\$HOME|%USERPROFILE%)|del\s+\/[sq][^\n]*[a-z]:\\|format\s+[a-z]:/i, why: "Cancellazione distruttiva" },
+  { id: "destructive-shell", severity: "high", re: /rm\s+-rf\s+(~|\/|\$HOME|%USERPROFILE%)\/?\*?(\s|$|["'`])|del\s+\/[sq][^\n]*[a-z]:\\|format\s+[a-z]:/i, why: "Cancellazione distruttiva" },
   { id: "dynamic-exec", severity: "medium", re: /\b(eval|new Function)\s*\(|child_process|subprocess\.(Popen|call|run)|os\.system\s*\(/i, why: "Esecuzione dinamica di comandi" },
   // credenziali
-  { id: "credential-access", severity: "high", re: /(\.ssh\/|id_rsa|\.aws\/credentials|\.npmrc|\.netrc|\.git-credentials|Login Data|keychain|credential(s)?\.json|\.claude\.json|\.claude\/settings)/i, why: "Accesso a file di credenziali o configurazioni" },
+  { id: "credential-access", severity: "high", re: /(\.ssh\/id_|~\/\.ssh\b|\.aws\/credentials|\.netrc|\.git-credentials|Login Data|Cookies\.sqlite|\.credentials\.json|wallet\.dat)/i, why: "Accesso a file di credenziali" },
+  { id: "config-access", severity: "medium", re: /(\.npmrc|keychain|\.claude\.json|\.claude\/settings|\.mcp\.json|id_rsa|credentials\.json)/i, why: "Legge o cita file di configurazione sensibili: verifica perché" },
   { id: "env-exfil", severity: "high", re: /process\.env[^\n]{0,80}(fetch|axios|http\.request|XMLHttpRequest)|(fetch|axios|requests\.(get|post))[^\n]{0,120}process\.env|os\.environ[^\n]{0,80}requests\./i, why: "Variabili d'ambiente inviate in rete" },
   { id: "hardcoded-secret", severity: "high", re: /(sk_live_[0-9a-z]{16,}|sk-ant-[a-z0-9_-]{20,}|ghp_[a-z0-9]{30,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|xox[bpa]-[a-z0-9-]{20,})/i, why: "Segreto scritto nel codice" },
   // rete e download
-  { id: "raw-ip-download", severity: "high", re: /https?:\/\/\d{1,3}(\.\d{1,3}){3}|\.(exe|msi|scr|dll|bat)\b["'\s)]/i, why: "Download da IP diretto o di eseguibili" },
+  { id: "raw-ip-download", severity: "high", re: /https?:\/\/(?!127\.|0\.0\.0\.0|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)\d{1,3}(\.\d{1,3}){3}|https?:\/\/\S+\.(exe|msi|scr|dll|bat|ps1)\b/i, why: "Download da IP pubblico diretto o di eseguibili" },
   { id: "network", severity: "low", re: /\b(fetch|axios|https?\.request|requests\.(get|post)|urllib|WebSocket)\b/, why: "Accesso alla rete: verifica a quali domini" },
   { id: "fs-broad", severity: "low", re: /os\.homedir\(\)|expanduser\(|%USERPROFILE%|\$HOME\b|fs\.(rmSync|rm|unlink)/i, why: "Accesso a file fuori dal progetto o cancellazioni" },
 ];
@@ -63,6 +64,7 @@ export function scanPath(target) {
     // Documentazione per umani (README, docs): un comando citato non viene eseguito da solo → gravità ridotta.
     // Istruzioni per l'AI (SKILL.md, agenti, comandi) restano a gravità piena: finiscono nel contesto del modello.
     const isDoc = /\.(md|mdx|txt)$/i.test(p) && !/SKILL\.md$|[\\/](agents|commands)[\\/]/i.test(rel);
+    const isNonRuntime = /(^|[\\/])(tests?|__tests__|spec|fixtures|\.github)[\\/]|\.(test|spec)\.[jt]sx?$/i.test(rel);
     const LEVELS = ["critical", "high", "medium", "low"];
     const EXEC = new Set(["pipe-to-shell", "encoded-powershell", "destructive-shell", "dynamic-exec", "raw-ip-download"]);
     for (const r of RULES) {
@@ -70,7 +72,10 @@ export function scanPath(target) {
       if (i < 0) continue;
       let severity = r.severity;
       if (isDoc) severity = LEVELS[Math.min(3, LEVELS.indexOf(severity) + (EXEC.has(r.id) ? 2 : 1))];
-      findings.push({ severity, id: r.id, file: rel, line: i + 1, why: r.why + (isDoc ? " (citato nella documentazione)" : ""), sample: lines[i].trim().slice(0, 140) });
+      // Test e CI non vengono caricati da Claude né eseguiti sul PC → un livello in meno.
+      if (isNonRuntime) severity = LEVELS[Math.min(3, LEVELS.indexOf(severity) + 1)];
+      const note = isDoc ? " (citato nella documentazione)" : isNonRuntime ? " (in test/CI, non caricato)" : "";
+      findings.push({ severity, id: r.id, file: rel, line: i + 1, why: r.why + note, sample: lines[i].trim().slice(0, 140) });
     }
     const sh = text.match(SHADOW);
     if (sh && /\.(json|js|ts|py)$/i.test(p)) findings.push({ severity: "medium", id: "tool-shadowing", file: rel, line: 0, why: `Definisce uno strumento con nome "${sh[1]}" uguale a uno nativo`, sample: sh[0] });

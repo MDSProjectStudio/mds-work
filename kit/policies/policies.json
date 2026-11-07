@@ -115,7 +115,7 @@
       "id": "pipe-to-shell",
       "tools": "^Bash$",
       "field": "command",
-      "pattern": "(curl|wget|iwr|invoke-webrequest)[^|\\n]*\\|\\s*(sh|bash|zsh|iex|powershell|pwsh|node|python)\\b",
+      "pattern": "(curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod)[^|\\n]*\\|\\s*(sh|bash|zsh|iex|invoke-expression|powershell|pwsh|node|python)\\b",
       "decision": "ask",
       "reason": "Esecuzione di script scaricati da internet."
     },

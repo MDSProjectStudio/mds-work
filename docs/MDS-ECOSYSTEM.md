@@ -43,6 +43,14 @@ Fonte: [anthropics/claude-plugins-official](https://github.com/anthropics/claude
 | session-report | approved | Atlas | report di sessione |
 | superpowers | **evaluating** | — | metodologia ampia (TDD, piani, sub-agenti) che si sovrappone alle skill MDS: rischio di istruzioni in conflitto e consumo di contesto. Da provare su un progetto di test prima di abilitarlo. |
 
+**Installazione e scansione (2026-11-08).** I 15 plugin usati dai tipi di progetto sono installati da `anthropics/claude-plugins-official` (versioni pinnate dal marketplace) e **disattivati a livello utente**: ogni progetto li attiva in `.claude/settings.json`. Scanner offline:
+- `chrome-devtools-mcp`, `code-review`, `commit-commands`, `context7`, `expo`, `feature-dev`, `frontend-design`, `github`, `playwright`, `stripe`, `typescript-lsp`, `vercel`: nessun segnale grave.
+- `security-guidance`: 3 segnali, rivisti a mano. Sono commenti nei suoi hook che citano i file di accesso di Claude per *proteggerli* e un esempio di SSRF nel prompt di revisione. Approvato.
+- `supabase`: `curl … | bash` in un workflow GitHub (CI, non gira sul PC). Approvato.
+- `unity`: la skill `unity-cli` suggerisce l'installer ufficiale (`curl https://unity.com/install.sh | bash`, `irm … | iex`). Il guard chiede conferma (`pipe-to-shell`). Approvato con attenzione.
+
+**Attenzione — plugin dell'app desktop.** L'app Claude ha un suo gestore di plugin (directory Anthropic), separato da quello della CLI. Lì i plugin installati sono **attivi in tutte le sessioni** e non seguono i `enabledPlugins` del progetto. Per consumare meno conviene spegnere dall'app quelli che non servono sempre (es. expo, stripe, supabase, unity, unity-perf).
+
 ## 2. Skill
 
 | Fonte | Stato | Cosa è stato preso |
