@@ -9,6 +9,7 @@ import { ROLES, packsForAgent } from "@/lib/skills";
 import { pendingApprovals, progressOf } from "@/lib/selectors";
 import type { Agent, AgentRole, Project, TaskStatus } from "@/lib/types";
 import { Sprite } from "./Sprite";
+import { elapsed } from "./LiveActivity";
 import { LogFeed } from "./LogFeed";
 import { AgentStatusBadge, Progress } from "./ui";
 
@@ -41,9 +42,13 @@ function Screen({ a, now }: { a: Agent; now: number }) {
         {[0.9, 0.6, 0.75, 0.45].map((w, i) => (
           <div key={i} className="typing-bar mb-[3px] h-[3px] rounded-full" style={{ width: `${w * 100}%`, background: i % 2 ? c + "aa" : c, animationDelay: `${i * 0.18}s` }} />
         ))}
-        <div className="absolute inset-x-1.5 bottom-1 h-[2px] rounded-full bg-white/10">
-          <div className="h-full rounded-full transition-[width] duration-1000" style={{ width: `${pct}%`, background: c, boxShadow: `0 0 6px ${c}` }} />
-        </div>
+        {a.live?.since ? (
+          <div className="mono absolute bottom-0.5 right-1.5 text-[8px] font-semibold" style={{ color: c }}>{elapsed(now - a.live.since)}</div>
+        ) : (
+          <div className="absolute inset-x-1.5 bottom-1 h-[2px] rounded-full bg-white/10">
+            <div className="h-full rounded-full transition-[width] duration-1000" style={{ width: `${pct}%`, background: c, boxShadow: `0 0 6px ${c}` }} />
+          </div>
+        )}
       </div>
     );
   }
@@ -68,7 +73,7 @@ function Desk({ a, x, y, now, selected, onClick }: { a: Agent; x: number; y: num
       aria-label={`${r.name}, ${r.label}: ${a.thought}`}
     >
       {/* fumetto */}
-      <div className="flex h-[38px] items-end">
+      <div className="flex h-[50px] items-end">
         <AnimatePresence mode="wait">
           {showBubble && (
             <motion.div
@@ -79,7 +84,7 @@ function Desk({ a, x, y, now, selected, onClick }: { a: Agent; x: number; y: num
               className="relative mb-1 max-w-[176px] rounded-xl border px-2.5 py-1 text-left text-[10.5px] leading-tight text-[#dbe4f5] backdrop-blur-md"
               style={{ borderColor: bubbleColor + "66", background: "rgba(8,13,26,0.85)", boxShadow: `0 0 18px -6px ${bubbleColor}` }}
             >
-              <span className="line-clamp-2">{a.thought}</span>
+              <span className={a.live ? "line-clamp-3" : "line-clamp-2"}>{a.thought}</span>
               <span className="absolute -bottom-[5px] left-1/2 h-2.5 w-2.5 -translate-x-1/2 rotate-45 border-b border-r" style={{ borderColor: bubbleColor + "66", background: "rgb(8,13,26)" }} />
             </motion.div>
           )}
@@ -265,7 +270,18 @@ export function AgentDrawer({ agentId, onClose }: { agentId?: string; onClose: (
             <div>
               <div className="kicker mb-2">adesso</div>
               <div className="rounded-xl border border-line bg-black/20 p-3 text-[13px]">
+                {a.live?.task && (
+                  <div className="mb-2 text-[11.5px] text-muted">
+                    <span className="kicker mr-1.5 !text-[8.5px]">incarico</span>
+                    {a.live.task}
+                  </div>
+                )}
                 {a.thought}
+                {a.live && (
+                  <div className="mono mt-2 text-[10.5px] text-muted">
+                    {a.status === "working" && a.live.since ? `al lavoro da ${elapsed(now - a.live.since)}` : `ultimo segnale ${elapsed(now - a.live.lastAt)} fa`}
+                  </div>
+                )}
                 {a.status === "working" && a.startedAt && a.duration && (
                   <div className="mt-2.5 flex items-center gap-2">
                     <Progress value={((now - a.startedAt) / a.duration) * 100} color={ROLES[a.role].color} />

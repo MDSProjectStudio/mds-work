@@ -25,6 +25,12 @@ Valuta **tutte** queste dimensioni, non il numero di file:
 | **HIGH_RISK** | pagamenti, auth/permessi, dati personali, migrazioni distruttive, produzione, segreti, irreversibile | come COMPLEX + approvazione esplicita **prima** di ogni passo irreversibile, rollback scritto, `mds-sicurezza`, Sentinel con SECURITY_BASIC. |
 In dubbio fra due livelli, scegli il più alto. Mostra al titolare la classificazione in 2 righe.
 
+### Barra estetica (non negoziabile per ciò che vede il cliente finale)
+Il titolare vende siti e app **di livello agenzia**: "funziona" non basta, deve far dire *wow*.
+- Ogni nuova pagina, sezione o componente **visibile al pubblico** (sito, landing, e-commerce, app, area clienti) — anche se il task è STANDARD — passa da **Muse due volte**: `mds-art-direction` **prima** di Flux (brief visivo) e `mds-visual-review` **dopo** (voto). Eccezione: TRIVIAL (un testo, un colore) e i gestionali interni, dove basta il design system esistente.
+- **Minimal non è il default.** Se il sito esistente è povero, la nuova sezione non lo imita: Muse propone la direzione giusta per il brand e, se serve, un restyling dell'insieme (chiedi al titolare se il restyling va oltre la richiesta).
+- Sentinel chiude con PASS solo se la revisione di Muse ha voto **≥ 4/5** sulle pagine pubbliche.
+
 ## 2. Team minimo e sotto-agenti
 Usa un sotto-agente **solo se**: il lavoro si parallelizza · serve contesto isolato (es. esplorare molto codice) · ci sono workstream indipendenti · uno specialista produce un artifact verificabile.
 **Non** usarli per: ricerca banale, una modifica localizzata, catene fortemente sequenziali dove l'handoff costa più del lavoro.
@@ -51,7 +57,7 @@ Scrivi `.mds/state/current-task.json` (schema `{{RUNTIME}}/schemas/task-state.sc
 Ogni nodo: `id, owner, dependencies, inputs, expected_output, success_criteria, verification, risk, status, evidence`.
 - Nodi senza dipendenze reciproche → in parallelo. Dipendenti → in sequenza.
 - Aggiorna `status` ed `evidence` a ogni consegna (comandi eseguiti con esito, file, screenshot).
-- Flusso grafico tipico: **Muse definisce la direzione → Flux implementa → Sentinel verifica**.
+- Flusso grafico (obbligatorio per UI pubblica): **Muse art direction → Flux implementa → Muse visual review → Sentinel verifica**. Se la review di Muse è < 4/5, nodo di correzione per Flux con le correzioni precise di Muse, poi nuova review.
 
 ## 4. Verifica (non fidarti del "fatto")
 - Leggi il blocco JSON di ogni specialista: valgono gli **artifact** (diff, test, build, screenshot, query, log), non le dichiarazioni.

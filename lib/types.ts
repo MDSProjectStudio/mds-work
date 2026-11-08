@@ -159,6 +159,19 @@ export interface Agent {
   startedAt?: number;
   duration?: number;
   tasksDone: number;
+  /** Solo team reale: attività vera ricevuta dagli hook di Claude Code (non salvata, calcolata dal vivo). */
+  live?: AgentLive;
+}
+
+export interface AgentLive {
+  /** incarico ricevuto da Atlas (ultimo «Atlas affida a …») */
+  task?: string;
+  /** inizio del giro di lavoro in corso */
+  since?: number;
+  /** ultimo segnale ricevuto */
+  lastAt: number;
+  /** ultime azioni, dalla più recente */
+  recent: { text: string; at: number; level: LogLevel }[];
 }
 
 export interface ClientRequest {

@@ -66,19 +66,70 @@ const writeJSON = (p, v) => {
 };
 const agentName = (t) => String(t ?? "").split(":").pop();
 
+/** Etichetta leggibile e sicura di un comando: solo programma e sottocomando, mai argomenti (possono contenere segreti). */
+export function commandLabel(cmd) {
+  const first = String(cmd ?? "")
+    .replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(\n|$)/g, "\n")
+    .split(/&&|\|\||;|\||\n/)
+    .map((s) => s.trim().replace(/^([A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, ""))
+    .find((s) => s && !/^(cd|echo|set|export)\b/.test(s));
+  if (!first) return "un comando";
+  const words = first.split(/\s+/).filter((w) => !/^-/.test(w) && !/[=/\\:"']/.test(w));
+  const prog = (words[0] ?? "comando").replace(/\.exe$/i, "");
+  const sub = ["npm", "pnpm", "yarn", "bun", "npx", "git", "node", "python", "cargo", "go", "dotnet", "supabase", "vercel", "gh", "expo", "eas"].includes(prog) ? words.slice(1, prog === "npm" && words[1] === "run" ? 3 : 2) : [];
+  return [prog, ...sub].join(" ").slice(0, 40);
+}
+
+/** Etichetta per gli strumenti MCP (browser di Sentinel/Muse, Context7, ecc.). */
+export function mcpLabel(tool, ti = {}) {
+  const name = tool.split("__").pop() ?? "";
+  const server = tool.split("__")[1]?.replace(/^plugin_[^_]+_/, "") ?? "";
+  if (/navigate$/.test(name)) return "Apre la pagina nel browser";
+  if (/screenshot/.test(name)) return "Fa uno screenshot della pagina";
+  if (/resize/.test(name)) return ti.width ? `Prova la pagina a ${ti.width}px` : "Cambia la dimensione dello schermo";
+  if (/click|hover|drag/.test(name)) return "Interagisce con la pagina";
+  if (/type|fill_form|select_option|press_key/.test(name)) return "Compila il form nel browser";
+  if (/console/.test(name)) return "Controlla gli errori in console";
+  if (/network/.test(name)) return "Controlla le richieste di rete";
+  if (/snapshot|evaluate|find/.test(name)) return "Ispeziona la pagina";
+  if (/performance|lighthouse/.test(name)) return "Misura le prestazioni";
+  if (/context7/.test(server) || /resolve-library|get-library-docs|query-docs/.test(name)) return "Consulta la documentazione aggiornata (Context7)";
+  return `Usa ${server || "uno strumento"}`;
+}
+
+/** Al massimo un evento "di lavoro" per ruolo ogni `ms` millisecondi (niente spam nella stanza). */
+function throttle(session, role, now, ms) {
+  session.lastEv ??= {};
+  if (now - (session.lastEv[role] ?? 0) < ms) return false;
+  session.lastEv[role] = now;
+  return true;
+}
+
+/** Prima riga utile del rapporto di un agente (il riepilogo in italiano), per la stanza. */
+function summaryLine(resp) {
+  const line = String(resp ?? "")
+    .replace(/\\n/g, "\n")
+    .split("\n")
+    .map((l) => l.replace(/^[\s#>*\-•\d.)]+/, "").replace(/\*\*/g, "").trim())
+    .find((l) => l.length > 12 && !/^(```|\{|\[|Another Claude|<agent-message|\[Subagent|The text below)/i.test(l));
+  return line ? line.slice(0, 140) : "";
+}
+
 /** Chiusura di un incarico: per Sentinel legge il verdetto e, se FAIL, ricorda ad Atlas il ciclo di correzione. */
 function finishSubagent(out, sub, what, resp, now, hookEventName, add, tele) {
   const role = dashboardRole(sub);
   if (sub !== "mds-qa") {
-    add(role, "idle", `Consegnato: ${what}`, "success");
+    const sum = summaryLine(resp);
+    add(role, "idle", `Consegnato: ${what}${sum ? ` — ${sum}` : ""}`, "success");
     tele({ subagent: sub, phase: "end" });
     return;
   }
   const verdict = String(resp).match(/"?verdict"?\s*[:=]\s*"?(PASS_WITH_WARNINGS|PASS|FAIL)/i)?.[1]?.toUpperCase() ?? "UNKNOWN";
+  const findings = (String(resp).match(/"severity"\s*:/g) ?? []).length;
   out.session.lastQaAt = now;
   out.session.lastVerdict = verdict;
   out.session.qaCycles = (out.session.qaCycles ?? 0) + (verdict === "FAIL" ? 1 : 0);
-  add("qa", "idle", `Verdetto Sentinel: ${verdict}`, verdict === "FAIL" ? "error" : verdict === "PASS" ? "success" : "warn");
+  add("qa", "idle", `Verdetto Sentinel: ${verdict}${findings ? ` · ${findings} ${findings === 1 ? "problema" : "problemi"} segnalati` : ""}`, verdict === "FAIL" ? "error" : verdict === "PASS" ? "success" : "warn");
   tele({ subagent: sub, phase: "end", verdict });
   if (verdict !== "FAIL") return;
   const msg =
@@ -182,7 +233,7 @@ export function handle(input, session, ctx = {}) {
   } else if (ev === "PostToolUse" && ["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(tool)) {
     const file = String(ti.file_path || ti.notebook_path || "");
     const rel = file && ctx.root ? path.relative(ctx.root, file).replace(/\\/g, "/") : file;
-    add(actor, null, `Modificato ${rel || "file"}`);
+    add(actor, "working", `${tool === "Write" ? "Scrive" : "Modifica"} ${rel || "un file"}`);
     out.session.edits = (out.session.edits ?? 0) + 1;
     if (CODE_EXT.test(file) && !/^(\.mds|docs)\//.test(rel)) {
       out.session.lastCodeEditAt = now;
@@ -193,7 +244,23 @@ export function handle(input, session, ctx = {}) {
     const cmd = String(ti.command ?? "");
     if (isVerifyCommand(cmd)) {
       out.session.lastVerifyAt = now;
+      add(actor, "working", `Lancia le verifiche: ${commandLabel(cmd)}`);
       tele({ tool, verify: cmd.slice(0, 120) });
+    } else if (throttle(out.session, actor, now, 4000)) {
+      add(actor, "working", `Esegue ${commandLabel(cmd)}`);
+    }
+  } else if (ev === "PostToolUse" && ["Read", "Grep", "Glob"].includes(tool)) {
+    // letture: solo per mostrare cosa sta studiando un agente, al massimo una ogni 10 secondi
+    if (throttle(out.session, actor, now, 10000)) {
+      const target = String(ti.file_path || ti.path || "");
+      const rel = target && ctx.root ? path.relative(ctx.root, target).replace(/\\/g, "/") : target;
+      add(actor, "working", tool === "Read" ? `Legge ${rel || "un file"}` : `Cerca nel codice${ti.pattern ? `: «${String(ti.pattern).slice(0, 40)}»` : ""}`);
+    }
+  } else if (ev === "PostToolUse" && /^mcp__/.test(String(tool))) {
+    const label = mcpLabel(String(tool), ti);
+    if (label && throttle(out.session, actor, now, 3000)) {
+      add(actor, "working", label);
+      tele({ tool: String(tool).split("__").pop() });
     }
   } else if (ev === "Notification") {
     add("chief", "waiting", input.message || "Claude aspetta una tua risposta", "warn");
@@ -211,7 +278,7 @@ export function handle(input, session, ctx = {}) {
       delete s.pendingNotice;
       tele({ gate: "notice" });
     } else if (waitingBg) {
-      add("chief", "waiting", "Atlas aspetta gli agenti al lavoro in sottofondo");
+      add("chief", "working", `Coordina il team: aspetta ${Object.values(s.bg).map((b) => ROLE_NAMES[dashboardRole(b.sub)] ?? b.sub).join(", ")}`);
       tele({ gate: "waiting_background", background: Object.values(s.bg).map((b) => b.sub) });
     } else if ((needVerify || needQa) && !input.stop_hook_active) {
       if (needVerify) s.gateVerifyFor = s.lastCodeEditAt;

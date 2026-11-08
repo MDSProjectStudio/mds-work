@@ -11,6 +11,7 @@ import { KIND_LABEL, ROLES } from "@/lib/skills";
 import { fmtDate, fmtRel, pendingApprovals, progressOf } from "@/lib/selectors";
 import type { ProjectStatus } from "@/lib/types";
 import { AgentDrawer, Office } from "../Office";
+import { LiveActivity } from "../LiveActivity";
 import { ApprovalCard } from "../ApprovalCard";
 import { LogFeed } from "../LogFeed";
 import { TaskBoard } from "../TaskBoard";
@@ -155,6 +156,7 @@ export function ProjectView({ id }: { id: string }) {
                 </div>
               )}
               <Office project={p} selected={agent} onSelect={setAgent} />
+              <LiveActivity project={p} onSelect={setAgent} />
               <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
                 <Card className="p-4">
                   <SectionTitle kicker="terminale" title="Log della stanza" right={<span className="flex items-center gap-1.5 text-xs text-lime"><span className="led led-pulse" style={{ width: 6, height: 6 }} /> live</span>} />

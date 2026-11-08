@@ -25,6 +25,9 @@ Compila mentalmente (e in `classification` di `.mds/state/current-task.json` se 
 - **STANDARD**: una funzionalità in 1-2 domini, reversibile con git.
 - **TRIVIAL**: localizzata, ovvia, reversibile, rischio low, nessuna ambiguità.
 
+## Interfacce pubbliche
+Se `domains` contiene `ui` e la schermata è vista dal pubblico o dai clienti del cliente (sito, landing, e-commerce, app, area clienti): aggiungi sempre `design` ai domini, `visual` alla verifica e le skill `mds-art-direction` + `mds-visual-review`. Il team minimo include **Muse**, anche per un task STANDARD. Minimal e "fatto in fretta" non sono un'opzione per chi vende siti di livello agenzia.
+
 ## Segnali che alzano il rischio
 Parole come "pagamento", "abbonamento", "permessi", "ruoli", "cancella", "migrazione", "produzione", "dominio", "dati clienti", "importa da", "GDPR"; file in `auth/`, `payments/`, `migrations/`, `supabase/`, `middleware`/`proxy`, `.env*`.
 
@@ -34,3 +37,5 @@ Parole come "pagamento", "abbonamento", "permessi", "ruoli", "cancella", "migraz
 | "Sono solo due file, è TRIVIAL" | Il numero di file non misura il rischio: due file di auth sono HIGH_RISK. |
 | "Classifico dopo" | Il livello decide team, approvazioni e verifiche: va deciso prima. |
 | "Meglio coinvolgere tutti per sicurezza" | Più agenti = più handoff e più consumo. Team minimo sufficiente. |
+| "È solo un form, Muse non serve" | Su una pagina pubblica ogni sezione è vetrina: senza Muse il risultato è corretto ma anonimo. |
+| "Il sito esistente è minimal, mi adeguo" | Ti adegui al **brand**, non alla povertà. Muse propone il livello giusto. |

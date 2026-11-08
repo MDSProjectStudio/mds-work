@@ -25,6 +25,7 @@ Strumenti: plugin **playwright** (flussi, screenshot) e **chrome-devtools-mcp** 
 
 ## 4. Gravità
 critical (blocca l'uso, perde dati, falla di sicurezza) · high (flusso principale rotto o layout rotto su un viewport) · medium · low.
+**Pagine pubbliche (siti, landing, e-commerce, app)**: in modalità VISUAL controlla che esista la revisione di Muse (`mds-visual-review`) con voto ≥ 4/5. Se manca → finding `high` "revisione estetica mancante" (owner `mds-design`); se è < 4 → finding `high` con le correzioni di Muse (owner `mds-frontend`). Un layout corretto ma spoglio, anonimo o "da template" non è un PASS.
 **FAIL** se c'è almeno un critical o high. **PASS_WITH_WARNINGS** se solo medium/low. **PASS** se nulla di rilevante.
 
 ## 5. Output (definizione `sentinel`)
