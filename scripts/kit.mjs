@@ -53,6 +53,11 @@ export const MDS_NATIVE_ASK = [
   "Bash(terraform destroy*)", "Bash(gh repo delete*)",
   "Bash(npm install -g *)", "Bash(npm i -g *)", "Bash(claude mcp add *)", "Bash(claude plugin install *)",
   "Read(**/.env)", "Read(**/.env.local)", "Read(**/.env.*.local)", "Read(**/.env.production*)",
+  // Le regole Read "ask" non coprono i comandi di terminale (prova guidata N2): servono regole sui comandi.
+  // Più larghe del guard (chiedono anche per .env.example), ma valgono senza hook.
+  "Bash(cat *.env*)", "Bash(type *.env*)", "Bash(head *.env*)", "Bash(tail *.env*)", "Bash(less *.env*)", "Bash(more *.env*)",
+  "Bash(grep *.env*)", "Bash(source *.env*)", "Bash(cp *.env*)", "Bash(sed *.env*)", "Bash(awk *.env*)",
+  "PowerShell(Get-Content *.env*)", "PowerShell(gc *.env*)", "PowerShell(type *.env*)", "PowerShell(cat *.env*)", "PowerShell(Select-String *.env*)", "PowerShell(Copy-Item *.env*)",
   "Edit(**/.env)", "Edit(**/.env.local)", "Edit(**/.env.*.local)", "Edit(**/.env.production*)",
 ];
 /** MCP sempre consentiti: strumenti interni dell'app Claude (lista compiti, sessioni, browser integrato, grafici). */

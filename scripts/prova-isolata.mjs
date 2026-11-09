@@ -15,7 +15,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { installProject, userKitInstalled } from "./kit.mjs";
 
-const arg = process.argv[2];
+const argv = process.argv.slice(2);
+// --solo-native: nessun hook, solo le regole di permesso native in modalità "ask" (verifica indipendente dal guard)
+const onlyNative = argv.includes("--solo-native");
+const arg = argv.find((a) => !a.startsWith("--"));
 const dir = path.resolve(arg ?? path.join(os.tmpdir(), `mds-prova-guidata-${new Date().toISOString().replace(/[:.]/g, "-")}`));
 if (fs.existsSync(dir) && fs.readdirSync(dir).length) {
   console.error(`✗ La cartella ${dir} non è vuota: scegline una nuova`);
@@ -39,11 +42,17 @@ git("init", "-q");
 git("add", "-A");
 git("-c", "user.name=MDS Prova", "-c", "user.email=prova@esempio.invalid", "commit", "-qm", "Progetto di prova guidata (dati finti)");
 
-installProject(dir, { tipo: "website", nome: "PROVA GUIDATA (dati finti)", quiet: true });
+installProject(dir, { tipo: "website", nome: `PROVA GUIDATA ${onlyNative ? "solo regole native" : "v3 completa"} (dati finti)`, quiet: true });
 const pj = JSON.parse(fs.readFileSync(path.join(dir, ".mds", "project.json"), "utf8"));
 pj.projectId = null; // nessun evento verso la dashboard
 fs.writeFileSync(path.join(dir, ".mds", "project.json"), JSON.stringify(pj, null, 2) + "\n");
+if (onlyNative) {
+  const sp = path.join(dir, ".claude", "settings.json");
+  const s = JSON.parse(fs.readFileSync(sp, "utf8"));
+  delete s.hooks; // nessun hook: resta solo il livello 1 (regole native "ask")
+  fs.writeFileSync(sp, JSON.stringify(s, null, 2) + "\n");
+}
 
 console.log(`✓ Progetto di prova isolato pronto: ${dir}`);
-console.log("  dati finti · nessun remoto git · non collegato alla dashboard · kit v3 installato");
+console.log(`  dati finti · nessun remoto git · non collegato alla dashboard · ${onlyNative ? "SOLO regole native (nessun hook)" : "kit v3 completo"}`);
 console.log("  Prossimo passo: segui docs/fasi/FASE-0-PROVE-GUIDATE.md");

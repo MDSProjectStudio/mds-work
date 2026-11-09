@@ -110,6 +110,14 @@
       "except": "\\.(example|sample|template)$"
     },
     {
+      "id": "env-shell",
+      "tools": "^(Bash|PowerShell)$",
+      "field": "command",
+      "pattern": "(^|[\\s\"'=/\\\\:(])\\.env(\\.(?!(example|sample|template|dist)\\b)[\\w.-]+)?(?=$|[\\s\"';|&)<>])",
+      "decision": "ask",
+      "reason": "Comando di terminale su un file con segreti (.env): lettura, copia o modifica richiedono conferma (prova guidata N2)."
+    },
+    {
       "id": "secret-in-code",
       "tools": "^(Write|Edit|MultiEdit)$",
       "field": "content",
