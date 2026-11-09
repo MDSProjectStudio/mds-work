@@ -180,8 +180,17 @@ export async function checkProtections(root) {
     // regole e integrità, lette con il guard installato (se esiste)
     const guardFile = [...(s.hooks?.PreToolUse ?? []).flatMap((g) => g.hooks ?? []).map(fileOf)].find((f) => f && /mds-guard\.mjs$/.test(f) && fs.existsSync(f));
     if (guardFile) {
-      const { loadPolicies } = await import(pathToFileURL(guardFile).href);
+      const { loadPolicies, readProject, isInstalledBinDir } = await import(pathToFileURL(guardFile).href);
       problems.push(...loadPolicies(root, { manifestDir: path.dirname(guardFile) }).problems);
+      // installazione v3: la configurazione del progetto deve essere leggibile e completa
+      if (isInstalledBinDir(path.dirname(guardFile))) {
+        const pj = readProject(root);
+        if (pj._status !== "ok") problems.push(`configurazione del progetto ${pj._status === "corrupt" ? "illeggibile" : "assente"} (.mds/project.json)`);
+        else {
+          if (!(Number(pj.kitVersion) >= 3)) problems.push(`configurazione del progetto incoerente (kitVersion ${pj.kitVersion ?? "assente"} con hook v3)`);
+          if (!Array.isArray(pj.mcp?.allow)) problems.push("elenco MCP autorizzati assente (mcp.allow)");
+        }
+      }
     }
   } catch (e) {
     problems.push(`verifica non riuscita (${String(e?.message ?? e).slice(0, 80)})`);

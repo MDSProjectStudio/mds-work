@@ -12,7 +12,8 @@
     "motore": "node scripts/motore.mjs",
     "eval": "node scripts/eval.mjs",
     "backup": "node scripts/backup.mjs",
-    "backup:verifica": "node --no-warnings scripts/restore-test.mjs"
+    "backup:verifica": "node --no-warnings scripts/restore-test.mjs",
+    "prova:isolata": "node scripts/prova-isolata.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

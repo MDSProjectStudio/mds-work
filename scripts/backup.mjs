@@ -3,7 +3,8 @@
  * MDS Work — backup cifrato dei dati della dashboard (SOLA LETTURA su Supabase).
  *
  *   npm run backup                          → nuovo backup cifrato in %USERPROFILE%\MDS-Backups
- *   npm run backup -- esporta-chiave <dir>  → copia di emergenza della chiave (da conservare offline)
+ *   npm run backup -- esporta-chiave <dir>  → copia di emergenza PROTETTA da frase segreta (scrypt + AES-256-GCM)
+ *   npm run backup -- esporta-chiave <dir> --non-cifrata → copia IN CHIARO (solo su supporto già cifrato)
  *   npm run backup -- importa-chiave <file> → ricrea la custodia DPAPI da una copia di emergenza
  *
  * Tabelle salvate: app_state (tutto lo stato, cassaforte inclusa nel suo formato cifrato originale),
@@ -13,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { supabase } from "./lib-supabase.mjs";
-import { BACKUP_DIR, KEY_FILE, PAYLOAD_FORMAT, encryptPayload, exportKey, importKey, loadKey, sha256, stable } from "./lib-backup.mjs";
+import { BACKUP_DIR, EXPORT_PROTECTED, KEY_FILE, MIN_PASSPHRASE, PAYLOAD_FORMAT, encryptPayload, exportKeyPlain, exportKeyProtected, importKey, loadKey, sha256, stable } from "./lib-backup.mjs";
 
 const TABLES = {
   app_state: { query: "?select=id,data,updated_at&order=id.asc" },
@@ -57,16 +58,60 @@ export function countsOf(tables) {
   };
 }
 
+/** Legge una frase segreta dal terminale senza mostrarla. Rifiuta pipe e file: la frase non deve finire in log o chat. */
+function askHidden(question) {
+  if (!process.stdin.isTTY) throw new Error("La frase segreta si inserisce solo da un terminale interattivo (mai da file, pipe o chat)");
+  return new Promise((resolve) => {
+    process.stdout.write(question);
+    const stdin = process.stdin;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+    let s = "";
+    const onData = (chunk) => {
+      for (const c of chunk) {
+        if (c === "\r" || c === "\n") {
+          stdin.setRawMode(false);
+          stdin.pause();
+          stdin.off("data", onData);
+          process.stdout.write("\n");
+          resolve(s);
+          return;
+        }
+        if (c === "\u0003") {
+          process.stdout.write("\n");
+          process.exit(130);
+        }
+        if (c === "\u007f" || c === "\b") s = s.slice(0, -1);
+        else s += c;
+      }
+    };
+    stdin.on("data", onData);
+  });
+}
+
 async function main() {
-  const [cmd, arg] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const [cmd, arg] = args;
   if (cmd === "esporta-chiave") {
-    if (!arg) throw new Error("Indica la cartella di destinazione, es. una chiavetta USB");
-    console.log(`✓ Copia di emergenza della chiave scritta in: ${exportKey(path.resolve(arg))}\n  Conservala offline e cancellala da questo PC se non serve qui.`);
+    if (!arg || arg.startsWith("--")) throw new Error("Indica la cartella di destinazione, es. una chiavetta USB");
+    if (args.includes("--non-cifrata")) {
+      const file = exportKeyPlain(path.resolve(arg));
+      console.log(`⚠ Copia NON CIFRATA della chiave scritta in: ${file}\n  Chi possiede questo file può leggere tutti i backup: tienilo solo su un supporto cifrato (es. BitLocker To Go).`);
+      return;
+    }
+    console.log(`Copia protetta della chiave. Scegli una frase segreta di almeno ${MIN_PASSPHRASE} caratteri e conservala in un posto DIVERSO dal file (es. password manager).`);
+    const p1 = await askHidden("Frase segreta: ");
+    const p2 = await askHidden("Ripeti la frase segreta: ");
+    if (p1 !== p2) throw new Error("Le due frasi non coincidono: niente è stato scritto");
+    console.log(`✓ Copia protetta della chiave scritta in: ${exportKeyProtected(path.resolve(arg), p1)}`);
     return;
   }
   if (cmd === "importa-chiave") {
     if (!arg) throw new Error("Indica il file della copia di emergenza");
-    console.log(`✓ Chiave ${importKey(path.resolve(arg))} custodita di nuovo con DPAPI`);
+    const j = JSON.parse(fs.readFileSync(path.resolve(arg), "utf8"));
+    const passphrase = j.format === EXPORT_PROTECTED ? await askHidden("Frase segreta della copia: ") : undefined;
+    console.log(`✓ Chiave ${importKey(path.resolve(arg), { passphrase })} custodita di nuovo con DPAPI`);
     return;
   }
 

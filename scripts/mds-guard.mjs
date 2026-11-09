@@ -29,6 +29,14 @@ const RUNTIME = path.join(os.homedir(), ".claude", "mds");
 export const SENSITIVE = /^(Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.+)$/;
 const WRITE_TOOLS = /^(Write|Edit|MultiEdit|NotebookEdit)$/;
 const sha256File = (p) => crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
+/** File che un'installazione v3 deve elencare nel manifest delle impronte. */
+export const REQUIRED_BIN_FILES = ["mds-guard.mjs", "mds-hook.mjs", "lib-supabase.mjs"];
+/**
+ * Cartella di un'installazione versionata (~/.claude/mds/bin/vN). Un guard eseguito da lì appartiene per costruzione
+ * a un progetto v3: tutto ciò che non è verificabile (manifest, configurazione del progetto, elenco MCP) va confermato.
+ * Un guard eseguito dal repository MDS Work serve i progetti v2 e mantiene il loro comportamento.
+ */
+export const isInstalledBinDir = (dir) => /[\\/]\.claude[\\/]mds[\\/]bin[\\/]v\d+[\\/]?$/i.test(String(dir ?? ""));
 
 /** Percorsi candidati delle policy: variabile di test, runtime installato, repository. */
 function policyCandidates() {
@@ -40,8 +48,9 @@ function policyCandidates() {
  * Carica le policy e segnala ogni problema in `problems` (l'elenco non vuoto attiva il fail-closed).
  * Le regex vengono compilate qui, una volta sola: una regola non valida è un problema, non un silenzio.
  */
-export function loadPolicies(projectRoot, { candidates = policyCandidates(), manifestDir = HERE } = {}) {
+export function loadPolicies(projectRoot, { candidates = policyCandidates(), manifestDir = HERE, requireManifest = isInstalledBinDir(manifestDir) } = {}) {
   const problems = [];
+  const installMode = requireManifest ? "v3" : "repo";
   let base = null;
   let source = null;
   for (const c of candidates) {
@@ -91,19 +100,28 @@ export function loadPolicies(projectRoot, { candidates = policyCandidates(), man
 
   // integrità dell'installazione: impronte registrate dall'installatore accanto al guard
   const manifestPath = path.join(manifestDir, "manifest.json");
-  if (fs.existsSync(manifestPath)) {
+  if (!fs.existsSync(manifestPath)) {
+    // installazione v3 senza impronte: l'integrità non è verificabile
+    if (requireManifest) problems.push("manifest delle impronte assente: integrità non verificabile");
+  } else {
     try {
       const m = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-      for (const [name, hash] of Object.entries(m.files ?? {})) {
+      const files = m.files && typeof m.files === "object" ? m.files : {};
+      for (const [name, hash] of Object.entries(files)) {
         const p = path.join(manifestDir, name);
         if (!fs.existsSync(p) || sha256File(p) !== hash) problems.push(`file del guard modificato o mancante: ${name}`);
+      }
+      if (requireManifest) {
+        const missing = REQUIRED_BIN_FILES.filter((f) => !files[f]);
+        if (missing.length) problems.push(`manifest incompleto: mancano le impronte di ${missing.join(", ")}`);
+        if (!m.policies) problems.push("manifest incompleto: manca l'impronta delle policy");
       }
       if (m.policies && source && !process.env.MDS_POLICIES && sha256File(source) !== m.policies) problems.push("policy modificate fuori dall'installatore");
     } catch {
       problems.push("manifest d'installazione illeggibile");
     }
   }
-  return { rules: compiled, writeScopes: base?.writeScopes ?? {}, problems, source };
+  return { rules: compiled, writeScopes: base?.writeScopes ?? {}, problems, source, installMode };
 }
 
 export function findProjectRoot(start) {
@@ -118,13 +136,29 @@ export function findProjectRoot(start) {
   return null;
 }
 
-/** Configurazione del progetto (.mds/project.json); {} se assente o illeggibile. */
+/**
+ * Configurazione del progetto (.mds/project.json) con lo stato della lettura:
+ *   _status "ok" | "missing" (nessun progetto o file assente) | "corrupt" (file presente ma illeggibile o non un oggetto)
+ */
 export function readProject(root) {
-  if (!root) return {};
+  if (!root) return { _status: "missing" };
+  const p = path.join(root, ".mds", "project.json");
+  if (!fs.existsSync(p)) return { _status: "missing" };
   try {
-    return JSON.parse(fs.readFileSync(path.join(root, ".mds", "project.json"), "utf8"));
+    const j = JSON.parse(fs.readFileSync(p, "utf8"));
+    return j && typeof j === "object" && !Array.isArray(j) ? { ...j, _status: "ok" } : { _status: "corrupt" };
   } catch {
-    return {};
+    return { _status: "corrupt" };
+  }
+}
+
+/** Il settings.json del progetto usa hook da un'installazione versionata? (secondo segnale di progetto v3) */
+export function settingsLookV3(root) {
+  if (!root) return false;
+  try {
+    return /[\\/]\.claude[\\/]mds[\\/]bin[\\/]v\d+[\\/]/i.test(fs.readFileSync(path.join(root, ".claude", "settings.json"), "utf8").replace(/\//g, "\\"));
+  } catch {
+    return false;
   }
 }
 
@@ -210,8 +244,26 @@ export function evaluate(hook, policies, projectRoot, project = readProject(proj
     if (!scopes.some((s) => new RegExp(s, "i").test(rel))) consider({ decision: "deny", id: "write-scope", reason: `${agent} può scrivere solo in: ${scopes.join(", ") || "(nessuna cartella: agente di sola lettura)"}. Passa il lavoro allo specialista giusto.` });
   }
 
-  // controlli v3 (solo progetti installati con il kit v3: gli altri restano come prima)
-  if (projectRoot && Number(project.kitVersion) >= 3) {
+  // controlli v3: guard eseguito da un'installazione v3, oppure progetto dichiarato v3.
+  // I progetti v2 (guard dal repository e kitVersion < 3) restano esattamente come prima.
+  const status = project?._status ?? "ok";
+  const declaredV3 = status === "ok" && Number(project.kitVersion) >= 3;
+  // terzo segnale: configurazione illeggibile ma settings.json con hook v3 → il progetto è v3
+  const v3 = policies.installMode === "v3" || declaredV3 || (status !== "ok" && settingsLookV3(projectRoot));
+  if (v3 && SENSITIVE.test(tool)) {
+    // configurazione non verificabile → conferma con spiegazione (mai via libera silenzioso)
+    if (!projectRoot || status !== "ok") {
+      consider({ decision: "ask", id: "configurazione-progetto-non-verificabile", reason: `la configurazione del progetto (.mds/project.json) è ${status === "corrupt" ? "illeggibile" : "assente"}: i controlli su scritture fuori progetto e MCP non sono verificabili. Esegui: npm run kit -- doctor "<cartella del progetto>"` });
+    } else if (!declaredV3) {
+      consider({ decision: "ask", id: "configurazione-progetto-incoerente", reason: `hook v3 ma .mds/project.json dichiara kitVersion ${project.kitVersion ?? "assente"}: reinstalla con npm run kit -- progetto "<cartella>" oppure ripristina la configurazione precedente` });
+    }
+  }
+  if (v3 && projectRoot && status === "ok") {
+    if (/^mcp__/.test(tool) && !Array.isArray(project.mcp?.allow)) {
+      consider({ decision: "ask", id: "mcp-elenco-assente", reason: "l'elenco degli MCP autorizzati (mcp.allow in .mds/project.json) è assente o non valido: ogni strumento MCP richiede conferma finché non viene ripristinato" });
+    }
+  }
+  if (v3 && projectRoot && status === "ok") {
     if (WRITE_TOOLS.test(tool)) {
       const file = fieldValue(tool, input, "file_path");
       if (file) {

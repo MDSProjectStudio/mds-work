@@ -7,6 +7,7 @@
  *   npm run eval -- guard     → casi di test delle policy (ask/deny/ok)
  *   npm run eval -- gate      → sequenze del gate di chiusura e del ciclo Sentinel
  *   npm run eval -- protezioni → guard fail-closed, installatore v3 e rollback (cartelle temporanee)
+ *   npm run eval -- chiave     → copia protetta della chiave dei backup (solo chiave di prova)
  *   npm run eval -- run [atlas|specialists] [--progetto "C:\percorso"]
  *                              → eval comportamentali con la CLI di Claude Code (se installata)
  *   npm run eval -- report "C:\percorso\progetto"
@@ -378,9 +379,164 @@ async function protezioni() {
     t("avvio sessione: guard con percorso sbagliato → avviso", probs.some((p) => /hook mancante/.test(p)));
     fs.writeFileSync(path.join(broken, ".claude", "settings.json"), JSON.stringify({ hooks: {} }));
     t("avvio sessione: guard non configurato → avviso", (await checkProtections(broken)).some((p) => /non configurato/.test(p)));
+
+    // ===== Regressione: installazione v3 con configurazione o manifest non verificabili (fail-closed) =====
+    const crypto = await import("node:crypto");
+    const h = (p) => crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
+    const fakeBin = path.join(tmp, "casa-finta", ".claude", "mds", "bin", "v3");
+    fs.mkdirSync(fakeBin, { recursive: true });
+    for (const f of ["mds-guard.mjs", "mds-hook.mjs", "lib-supabase.mjs"]) fs.copyFileSync(path.join(ROOT, "scripts", f), path.join(fakeBin, f));
+    const fullManifest = { files: Object.fromEntries(["mds-guard.mjs", "mds-hook.mjs", "lib-supabase.mjs"].map((f) => [f, h(path.join(fakeBin, f))])), policies: h(good) };
+    const writeManifest = (m) => fs.writeFileSync(path.join(fakeBin, "manifest.json"), JSON.stringify(m));
+    const polV3 = () => loadPolicies(null, { candidates: [good], manifestDir: fakeBin });
+
+    // manifest
+    if (fs.existsSync(path.join(fakeBin, "manifest.json"))) fs.rmSync(path.join(fakeBin, "manifest.json"));
+    t("manifest assente in installazione v3 → problema", polV3().problems.some((p) => /manifest delle impronte assente/.test(p)));
+    writeManifest({ files: { "mds-guard.mjs": fullManifest.files["mds-guard.mjs"] }, policies: fullManifest.policies });
+    t("manifest incompleto (file mancanti) → problema", polV3().problems.some((p) => /manifest incompleto: mancano/.test(p)));
+    writeManifest({ files: fullManifest.files });
+    t("manifest incompleto (impronta policy mancante) → problema", polV3().problems.some((p) => /impronta delle policy/.test(p)));
+    writeManifest(fullManifest);
+    const pv3 = polV3();
+    t("manifest completo → nessun problema, modalità v3", pv3.problems.length === 0 && pv3.installMode === "v3");
+    t("guard dal repository → modalità v2 (nessun manifest richiesto)", ok3.installMode === "repo");
+
+    // configurazione del progetto
+    const cfg = path.join(tmp, "progetto-cfg");
+    fs.mkdirSync(path.join(cfg, ".mds"), { recursive: true });
+    fs.mkdirSync(path.join(cfg, ".claude"), { recursive: true });
+    const setPj = (txt) => fs.writeFileSync(path.join(cfg, ".mds", "project.json"), txt);
+    const W_IN = { tool_name: "Write", tool_input: { file_path: path.join(cfg, "src", "a.ts"), content: "x" } };
+    const W_OUT = { tool_name: "Write", tool_input: { file_path: "C:/Progetti/altro-cliente/a.ts", content: "x" } };
+    const MCP_X = { tool_name: "mcp__plugin_supabase_supabase__list_tables", tool_input: {} };
+    const MCP_OK = { tool_name: "mcp__plugin_playwright_playwright__browser_snapshot", tool_input: {} };
+    const READ = { tool_name: "Read", tool_input: { file_path: path.join(cfg, "README.md") } };
+
+    setPj("{ rotto");
+    t("v3 · project.json illeggibile → scrittura nel progetto: conferma", dec(ev(W_IN, pv3, cfg)) === "ask");
+    t("v3 · project.json illeggibile → scrittura fuori progetto: conferma", dec(ev(W_OUT, pv3, cfg)) === "ask");
+    t("v3 · project.json illeggibile → MCP: conferma", dec(ev(MCP_X, pv3, cfg)) === "ask");
+    t("v3 · project.json illeggibile → lettura: prosegue", dec(ev(READ, pv3, cfg)) === null);
+    t("v3 · project.json illeggibile → motivo chiaro", /illeggibile/.test(ev(W_IN, pv3, cfg)?.reason ?? ""));
+    setPj("[1,2,3]");
+    t("v3 · project.json non è un oggetto → conferma", dec(ev(W_IN, pv3, cfg)) === "ask");
+    t("v3 · nessun progetto trovato → comandi: conferma", dec(ev({ tool_name: "Bash", tool_input: { command: "ls" } }, pv3, null)) === "ask");
+    setPj(JSON.stringify({ kitVersion: 2 }));
+    t("v3 · project.json dichiara v2 (incoerente) → conferma", ev(W_IN, pv3, cfg)?.id === "configurazione-progetto-incoerente");
+    setPj(JSON.stringify({ kitVersion: 3 }));
+    t("v3 · mcp.allow assente → MCP: conferma", ev(MCP_OK, pv3, cfg)?.id === "mcp-elenco-assente");
+    t("v3 · mcp.allow assente → scrittura nel progetto: ok", dec(ev(W_IN, pv3, cfg)) === null);
+    setPj(JSON.stringify({ kitVersion: 3, mcp: { allow: "playwright" } }));
+    t("v3 · mcp.allow non valido (non elenco) → MCP: conferma", ev(MCP_OK, pv3, cfg)?.id === "mcp-elenco-assente");
+    setPj(JSON.stringify({ kitVersion: 3, mcp: { allow: ["playwright"] } }));
+    t("v3 · configurazione completa → MCP autorizzato: ok", dec(ev(MCP_OK, pv3, cfg)) === null);
+    t("v3 · configurazione completa → MCP non autorizzato: conferma", ev(MCP_X, pv3, cfg)?.id === "mcp-non-autorizzato");
+    t("v3 · configurazione completa → scrittura fuori progetto: conferma", ev(W_OUT, pv3, cfg)?.id === "scrittura-fuori-progetto");
+
+    // guard dal repository (configurazione v2): compatibilità esplicita
+    setPj("{ rotto");
+    fs.writeFileSync(path.join(cfg, ".claude", "settings.json"), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: `node "${ROOT.replace(/\\/g, "/")}/scripts/mds-guard.mjs"` }] }] } }));
+    t("v2 · project.json illeggibile, settings v2 → comportamento v2 invariato", dec(ev(W_OUT, ok3, cfg)) === null);
+    fs.writeFileSync(path.join(cfg, ".claude", "settings.json"), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "node", args: [path.join(fakeBin, "mds-guard.mjs").replace(/\\/g, "/")] }] }] } }));
+    t("repo · project.json illeggibile ma settings con hook v3 → conferma", dec(ev(W_OUT, ok3, cfg)) === "ask");
+    setPj(JSON.stringify({ kitVersion: 2 }));
+    fs.writeFileSync(path.join(cfg, ".claude", "settings.json"), "{}");
+    t("v2 · progetto v2 → scrittura fuori progetto invariata", dec(ev(W_OUT, ok3, cfg)) === null);
+    t("v2 · progetto v2 → MCP invariato", dec(ev(MCP_X, ok3, cfg)) === null);
+
+    // avvio sessione con installazione v3: configurazione illeggibile / elenco MCP assente
+    fs.writeFileSync(path.join(cfg, ".claude", "settings.json"), JSON.stringify({ hooks: { PreToolUse: [{ matcher: "^(Bash|Write|mcp__.*)$", hooks: [{ type: "command", command: "node", args: [path.join(fakeBin, "mds-guard.mjs").replace(/\\/g, "/")], onFailure: "block" }] }] } }));
+    setPj("{ rotto");
+    t("avvio sessione v3 · project.json illeggibile → avviso", (await checkProtections(cfg)).some((p) => /illeggibile/.test(p)));
+    setPj(JSON.stringify({ kitVersion: 3 }));
+    t("avvio sessione v3 · elenco MCP assente → avviso", (await checkProtections(cfg)).some((p) => /MCP autorizzati assente/.test(p)));
+    fs.rmSync(path.join(fakeBin, "manifest.json"));
+    t("avvio sessione v3 · manifest assente → avviso", (await checkProtections(cfg)).some((p) => /manifest delle impronte assente/.test(p)));
+
+    // processo vero, eseguito dalla finta installazione v3 con progetto illeggibile
+    writeManifest(fullManifest);
+    setPj("{ rotto");
+    const pr = spawnSync(process.execPath, [path.join(fakeBin, "mds-guard.mjs")], { input: JSON.stringify({ tool_name: "Write", tool_input: { file_path: path.join(cfg, "a.ts"), content: "x" }, cwd: cfg }), encoding: "utf8", env: { ...process.env, MDS_POLICIES: good } });
+    t("processo v3 · project.json illeggibile → ask con motivo", pr.status === 0 && parse(pr) === "ask" && /illeggibile/.test(pr.stdout));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+  const failures = checks.filter(([, v]) => !v).map(([n]) => n);
+  failures.forEach(ko);
+  ok(`${checks.length - failures.length}/${checks.length} controlli corretti`);
+  return { pass: failures.length === 0, total: checks.length, failures };
+}
+
+/* ------------------------------------------------------------------ */
+/**
+ * Copia di emergenza della chiave dei backup: esportazione protetta, importazione, recupero.
+ * SOLO con una chiave di prova in custodie DPAPI separate e temporanee: la chiave reale non viene mai letta né esportata.
+ */
+async function chiave() {
+  console.log("\n▸ Chiave dei backup (copia protetta, importazione, recupero — solo chiave di prova)");
+  if (process.platform !== "win32") {
+    ok("saltata: la custodia DPAPI esiste solo su Windows");
+    return { pass: true, skipped: true };
+  }
+  const checks = [];
+  const t = (name, cond) => checks.push([name, !!cond]);
+  const os = await import("node:os");
+  const crypto = await import("node:crypto");
+  const lib = await import("./lib-backup.mjs");
+  const realKey = path.join(os.homedir(), ".mds", "backup-key.dpapi");
+  const realBefore = fs.existsSync(realKey) ? crypto.createHash("sha256").update(fs.readFileSync(realKey)).digest("hex") : null;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mds-eval-chiave-"));
+  const custodyA = path.join(tmp, "custodia-A"), custodyB = path.join(tmp, "custodia-B"), usb = path.join(tmp, "chiavetta");
+  const passphrase = crypto.randomBytes(18).toString("base64url"); // generata qui, mai stampata
+  const throws = (fn) => {
+    try {
+      fn();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  try {
+    const kA = lib.loadKey({ create: true, keyDir: custodyA });
+    const tables = { app_state: [{ id: 1, data: { projects: [{ id: "p", name: "dato finto" }] } }], agent_events: [], launch_requests: [] };
+    const env = lib.encryptPayload({ format: lib.PAYLOAD_FORMAT, createdAt: "prova", tables, counts: {}, sha256: lib.sha256(lib.stable(tables)) }, kA);
+
+    t("frase troppo corta → esportazione rifiutata", throws(() => lib.exportKeyProtected(usb, "corta", { keyDir: custodyA })));
+    const file = lib.exportKeyProtected(usb, passphrase, { keyDir: custodyA });
+    const raw = fs.readFileSync(file, "utf8");
+    t("copia protetta: la chiave non compare in chiaro", !raw.includes(kA.toString("base64")) && !raw.includes(kA.toString("hex")));
+    t("copia protetta: la frase segreta non compare", !raw.includes(passphrase));
+    t("copia protetta: formato scrypt + AES-256-GCM", JSON.parse(raw).format === lib.EXPORT_PROTECTED && JSON.parse(raw).kdf.name === "scrypt");
+
+    t("importazione senza frase → rifiutata", throws(() => lib.importKey(file, { keyDir: custodyB })));
+    t("importazione con frase sbagliata → rifiutata", throws(() => lib.importKey(file, { passphrase: passphrase + "x", keyDir: custodyB })));
+    t("frase sbagliata: nessuna custodia creata", !fs.existsSync(path.join(custodyB, "backup-key.dpapi")));
+    const tampered = path.join(usb, "alterata.mdskey");
+    const j = JSON.parse(raw);
+    j.ciphertext = Buffer.from(j.ciphertext, "base64").map((b, i) => (i === 3 ? b ^ 1 : b)).toString("base64");
+    fs.writeFileSync(tampered, JSON.stringify(j));
+    t("copia alterata → rifiutata", throws(() => lib.importKey(tampered, { passphrase, keyDir: custodyB })));
+    const j2 = JSON.parse(raw);
+    j2.kdf.N = 2 ** 10;
+    fs.writeFileSync(tampered, JSON.stringify(j2));
+    t("parametri scrypt alterati → rifiutata", throws(() => lib.importKey(tampered, { passphrase, keyDir: custodyB })));
+
+    const id = lib.importKey(file, { passphrase, keyDir: custodyB });
+    t("importazione corretta in una custodia DPAPI separata", id === lib.keyIdOf(kA) && fs.existsSync(path.join(custodyB, "backup-key.dpapi")));
+    const kB = lib.loadKey({ keyDir: custodyB });
+    t("recupero: la chiave importata è identica", kB.equals(kA));
+    t("recupero: il backup di prova si decifra con la chiave importata", lib.stable(lib.decryptEnvelope(env, kB).tables) === lib.stable(tables));
+    t("importazione ripetuta → non sovrascrive", throws(() => lib.importKey(file, { passphrase, keyDir: custodyB })));
+    t("custodia DPAPI: il file non contiene la chiave in chiaro", !fs.readFileSync(path.join(custodyB, "backup-key.dpapi"), "utf8").includes(kA.toString("base64")));
+
+    const plain = lib.exportKeyPlain(path.join(tmp, "supporto-cifrato"), { keyDir: custodyA });
+    t("copia non cifrata: solo su richiesta, nome esplicito", /NON-CIFRATA/.test(path.basename(plain)) && JSON.parse(fs.readFileSync(plain, "utf8")).format === lib.EXPORT_PLAIN);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  const realAfter = fs.existsSync(realKey) ? crypto.createHash("sha256").update(fs.readFileSync(realKey)).digest("hex") : null;
+  t("chiave reale intatta (non letta, non esportata, non modificata)", realBefore === realAfter);
   const failures = checks.filter(([, v]) => !v).map(([n]) => n);
   failures.forEach(ko);
   ok(`${checks.length - failures.length}/${checks.length} controlli corretti`);
@@ -498,6 +654,7 @@ if (cmd === "all" || cmd === "lint") out.lint = lint();
 if (cmd === "all" || cmd === "guard") out.guard = guard();
 if (cmd === "all" || cmd === "gate") out.gate = gate();
 if (cmd === "all" || cmd === "protezioni") out.protezioni = await protezioni();
+if (cmd === "all" || cmd === "chiave") out.chiave = await chiave();
 if (cmd === "run") out.run = run(rest[0] && !rest[0].startsWith("--") ? rest[0] : "atlas", opt("progetto"));
 if (cmd === "report") out.report = report(path.resolve(rest[0] ?? "."));
 fs.mkdirSync(RESULTS, { recursive: true });

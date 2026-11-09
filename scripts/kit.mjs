@@ -387,8 +387,9 @@ export async function doctor(projectDir, { quiet = false } = {}) {
 
   // progetto
   if (projectDir) {
-    const p = readJSON(path.join(projectDir, ".mds", "project.json"), null);
-    if (!p) say("ko", `${projectDir}: non è un progetto MDS (manca .mds/project.json)`);
+    const pjPath = path.join(projectDir, ".mds", "project.json");
+    const p = readJSON(pjPath, null);
+    if (!p) say("ko", fs.existsSync(pjPath) ? `${projectDir}: .mds/project.json ILLEGGIBILE → il guard chiede conferma per ogni azione sensibile; ripristina con npm run kit -- ripristina "<cartella>"` : `${projectDir}: non è un progetto MDS (manca .mds/project.json)`);
     else {
       say(Number(p.kitVersion) >= KIT_VERSION ? "ok" : "warn", `progetto «${p.name}»: kit v${p.kitVersion}${Number(p.kitVersion) < KIT_VERSION ? " → aggiorna con npm run kit -- progetto <cartella>" : ""}`);
       const s = readJSON(path.join(projectDir, ".claude", "settings.json"), {});
@@ -408,7 +409,8 @@ export async function doctor(projectDir, { quiet = false } = {}) {
       if (repoRefs.length) say("warn", `${repoRefs.length} hook puntano ancora alla cartella del repository (si romperebbero spostandola)`);
       const native = (s.permissions?.ask ?? []).filter((r) => MDS_NATIVE_ASK.includes(r)).length;
       say(native === MDS_NATIVE_ASK.length ? "ok" : "ko", `regole di permesso native: ${native}/${MDS_NATIVE_ASK.length}`);
-      say(Array.isArray(p.mcp?.allow) ? "ok" : "warn", Array.isArray(p.mcp?.allow) ? `MCP autorizzati per il progetto: ${p.mcp.allow.join(", ")}` : "nessun elenco MCP autorizzati (controllo MCP disattivo)");
+      const v3proj = Number(p.kitVersion) >= 3;
+      say(Array.isArray(p.mcp?.allow) ? "ok" : v3proj ? "ko" : "warn", Array.isArray(p.mcp?.allow) ? `MCP autorizzati per il progetto: ${p.mcp.allow.join(", ")}` : v3proj ? "elenco MCP autorizzati ASSENTE → ogni strumento MCP richiede conferma; reinstalla con npm run kit -- progetto <cartella>" : "progetto v2: nessun elenco MCP (controllo MCP non previsto)");
       const bk = path.join(projectDir, ".mds", "backup");
       say(fs.existsSync(bk) ? "ok" : "warn", fs.existsSync(bk) ? `${fs.readdirSync(bk).length} copie di sicurezza della configurazione (npm run kit -- ripristina <cartella>)` : "nessuna copia di sicurezza della configurazione");
     }
