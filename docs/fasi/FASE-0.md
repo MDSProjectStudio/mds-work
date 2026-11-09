@@ -99,7 +99,11 @@ Fuori dal repository, creati in Fase 0:
 - **Prova di recupero:**
   - importazione in una **custodia DPAPI separata e temporanea** (`%TEMP%\mds-prova-recupero-chiave`, "importata da: copia protetta");
   - con la chiave recuperata è stato decifrato e verificato **campo per campo** il backup reale: `✓ Prova di ripristino superata`.
-  - La custodia reale è rimasta l'originale, invariata (stessa impronta prima e dopo).
+    - decifratura, autenticità e impronta interna verificate;
+    - file alterato e chiave sbagliata rifiutati;
+    - tutte le collezioni identiche alla produzione, compresi 183 eventi e 2 lanci.
+  - **Confermato dal titolare**, che ha poi rimosso dal terminale la variabile temporanea `MDS_BACKUP_KEY_DIR`: i comandi successivi usano di nuovo la custodia normale.
+  - La custodia reale è rimasta l'originale, invariata (stessa impronta prima e dopo; verificato anche che la custodia usata nella prova fosse quella temporanea, "importata da: copia protetta").
 - **Da completare (titolare):**
   1. spostare il file `.mdskey` dal Desktop a una chiavetta, disco esterno o cloud, **fuori da questo PC**;
   2. toglierlo dal Desktop;
