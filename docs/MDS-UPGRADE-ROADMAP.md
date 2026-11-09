@@ -4,7 +4,7 @@ Fonte: *Master Upgrade Blueprint* del 9 novembre 2026 (approvato nell'architettu
 
 | Fase | Stato | Rapporto |
 |---|---|---|
-| 0 — Preparazione e protezione | **completata, in attesa di approvazione** | [FASE-0.md](fasi/FASE-0.md) |
+| 0 — Preparazione e protezione | **completata e collaudata, in attesa di chiusura** | [FASE-0.md](fasi/FASE-0.md) |
 | 1 — Affidabilità della dashboard | da approvare | — |
 | 2 — Multiprogetto reale | da approvare | — |
 | 3 — Potenziamento MDS Team | da approvare | — |
