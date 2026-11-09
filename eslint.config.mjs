@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Artefatti generati e locali (ignorati anche da git): non sono codice del progetto
+    ".next-*/**",
+    ".data/**",
+    "kit/evals/results/**",
   ]),
   {
     rules: {

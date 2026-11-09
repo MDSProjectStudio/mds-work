@@ -13,6 +13,7 @@
  *   npm run kit -- scan "C:\percorso\skill-o-plugin"
  *       Scanner OFFLINE per skill/plugin/MCP di terzi (prompt injection, script sospetti, segreti, rete, file system).
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,7 +29,35 @@ const LESSONS = path.join(RUNTIME, "lessons");
 const OLD_LESSONS = path.join(RUNTIME, "lezioni");
 const fwd = (p) => p.replace(/\\/g, "/");
 const KINDS = ["website", "ecommerce", "management", "webapp", "mobile", "automation", "game"];
-export const KIT_VERSION = 2;
+export const KIT_VERSION = 3;
+/** Hook installati in una cartella versionata del PC: i progetti non dipendono più dalla posizione del repo MDS Work. */
+export const BIN = path.join(RUNTIME, "bin", `v${KIT_VERSION}`);
+const BIN_FILES = ["mds-guard.mjs", "mds-hook.mjs", "lib-supabase.mjs"];
+const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
+const sha256File = (p) => crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
+
+/**
+ * Regole di permesso NATIVE di Claude Code (livello 1): valgono anche se gli hook mancano o non partono.
+ * Sintassi: https://code.claude.com/docs/en/permissions — "ask" chiede conferma anche in modalità auto.
+ * Coprono le operazioni più rischiose; le sfumature (eccezioni, per agente) restano al guard (livello 2).
+ */
+export const MDS_NATIVE_ASK = [
+  "Bash(git push *)", "PowerShell(git push *)",
+  "Bash(git reset --hard*)", "PowerShell(git reset --hard*)",
+  "Bash(git clean *)", "Bash(git branch -D *)", "Bash(git checkout -- *)",
+  "Bash(rm -rf /*)", "Bash(rm -rf ~*)", "Bash(rm -rf ..*)", "Bash(rm -rf $HOME*)", "Bash(rm -rf C:*)", "Bash(rm -rf c:*)",
+  "PowerShell(Remove-Item *-Recurse*)",
+  "Bash(vercel *--prod*)", "Bash(vercel promote *)", "Bash(vercel rm *)", "Bash(vercel remove *)",
+  "Bash(npm publish*)", "Bash(eas submit*)", "Bash(firebase deploy*)",
+  "Bash(supabase db reset*)", "Bash(supabase db push*)", "Bash(supabase functions deploy*)", "Bash(prisma migrate reset*)",
+  "Bash(terraform destroy*)", "Bash(gh repo delete*)",
+  "Bash(npm install -g *)", "Bash(npm i -g *)", "Bash(claude mcp add *)", "Bash(claude plugin install *)",
+  "Read(**/.env)", "Read(**/.env.local)", "Read(**/.env.*.local)", "Read(**/.env.production*)",
+  "Edit(**/.env)", "Edit(**/.env.local)", "Edit(**/.env.*.local)", "Edit(**/.env.production*)",
+];
+/** MCP sempre consentiti: strumenti interni dell'app Claude (lista compiti, sessioni, browser integrato, grafici). */
+const MCP_BASE_ALLOW = ["ccd_*", "Claude_Browser", "visualize"];
+const MCP_BY_KIND_EXTRA = { game: ["Roblox_Studio"] };
 
 /** agente → file di lezioni (persona) */
 export const LESSON_OF = {
@@ -111,10 +140,36 @@ export function installUser({ profile = "", quiet = false } = {}) {
   }
   log(`✓ ${s} skill installate`);
 
-  // 3. runtime condiviso: policy, schemi, modelli, config
+  // 3. runtime condiviso: policy, schemi, modelli, config (prima: copia della versione precedente)
+  const prev = ["policies", "schemas", "templates", "config.json", "kit.json"].filter((d) => fs.existsSync(path.join(RUNTIME, d)));
+  if (prev.length) {
+    const dest = path.join(RUNTIME, "backup", stamp());
+    for (const d of prev) {
+      const src = path.join(RUNTIME, d);
+      if (fs.statSync(src).isDirectory()) copyDir(src, path.join(dest, d));
+      else {
+        fs.mkdirSync(dest, { recursive: true });
+        fs.copyFileSync(src, path.join(dest, d));
+      }
+    }
+    log(`✓ Configurazione precedente conservata in ${dest}`);
+  }
   for (const d of ["policies", "schemas", "templates"]) copyDir(path.join(KIT, d), path.join(RUNTIME, d));
   fs.copyFileSync(path.join(KIT, "config.json"), path.join(RUNTIME, "config.json"));
   log(`✓ Runtime in ${RUNTIME} (policy, schemi, modelli)`);
+
+  // 3b. hook versionati con impronte (le versioni precedenti restano per il rollback)
+  fs.mkdirSync(BIN, { recursive: true });
+  for (const f of BIN_FILES) fs.copyFileSync(path.join(HERE, f), path.join(BIN, f));
+  // solo il PERCORSO di .env.local (per gli eventi verso la dashboard), mai le chiavi
+  writeJSON(path.join(BIN, "runtime.json"), { envFile: fwd(path.join(ROOT, ".env.local")), repo: fwd(ROOT) });
+  writeJSON(path.join(BIN, "manifest.json"), {
+    version: KIT_VERSION,
+    installedAt: new Date().toISOString(),
+    files: Object.fromEntries(BIN_FILES.map((f) => [f, sha256File(path.join(BIN, f))])),
+    policies: sha256File(path.join(RUNTIME, "policies", "policies.json")),
+  });
+  log(`✓ Hook v${KIT_VERSION} con impronte in ${BIN}`);
 
   // 4. lezioni strutturate (+ migrazione dal formato v1, senza cancellare nulla)
   fs.mkdirSync(LESSONS, { recursive: true });
@@ -142,7 +197,35 @@ export function installUser({ profile = "", quiet = false } = {}) {
   writeJSON(path.join(RUNTIME, "kit.json"), { version: KIT_VERSION, installedAt: new Date().toISOString(), profile: profile || null });
 }
 
-export const userKitInstalled = () => fs.existsSync(path.join(CLAUDE_HOME, "agents", "mds-design.md")) && fs.existsSync(path.join(RUNTIME, "policies", "policies.json"));
+export const userKitInstalled = () => fs.existsSync(path.join(CLAUDE_HOME, "agents", "mds-design.md")) && fs.existsSync(path.join(RUNTIME, "policies", "policies.json")) && fs.existsSync(path.join(BIN, "manifest.json"));
+
+/** Copia di sicurezza della configurazione di un progetto prima di ogni modifica (rollback con `kit ripristina`). */
+function backupProjectConfig(dir, label = "") {
+  const files = [path.join(".claude", "settings.json"), path.join(".mds", "project.json")].filter((f) => fs.existsSync(path.join(dir, f)));
+  if (!files.length) return null;
+  const dest = path.join(dir, ".mds", "backup", `${stamp()}${label ? `-${label}` : ""}`);
+  for (const f of files) {
+    fs.mkdirSync(path.dirname(path.join(dest, f)), { recursive: true });
+    fs.copyFileSync(path.join(dir, f), path.join(dest, f));
+  }
+  return dest;
+}
+
+/** Ripristina l'ultima copia di sicurezza della configurazione di un progetto (anch'esso reversibile). */
+export function restoreProject(dir, { quiet = false } = {}) {
+  const log = (m) => !quiet && console.log(m);
+  const root = path.join(dir, ".mds", "backup");
+  const all = fs.existsSync(root) ? fs.readdirSync(root).filter((d) => !d.endsWith("-pre-ripristino")).sort() : [];
+  if (!all.length) throw new Error("Nessuna copia di sicurezza in .mds/backup: niente da ripristinare");
+  const from = path.join(root, all.at(-1));
+  const safety = backupProjectConfig(dir, "pre-ripristino");
+  for (const f of [path.join(".claude", "settings.json"), path.join(".mds", "project.json")]) {
+    if (fs.existsSync(path.join(from, f))) fs.copyFileSync(path.join(from, f), path.join(dir, f));
+  }
+  log(`✓ Configurazione ripristinata da ${from}`);
+  if (safety) log(`  (lo stato di prima è conservato in ${safety})`);
+  return from;
+}
 
 /* ------------------------------------------------------------------ */
 /*                        PREPARAZIONE PROGETTO                         */
@@ -166,7 +249,10 @@ export function installProject(dir, { tipo = "website", template = "", id = "", 
   const log = (m) => !quiet && console.log(m);
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`Cartella non trovata: ${dir}`);
   if (!KINDS.includes(tipo)) tipo = "website";
-  const name = nome || path.basename(dir);
+  const prevProject = readJSON(path.join(dir, ".mds", "project.json"), {});
+  const name = nome || prevProject.name || path.basename(dir);
+  const backup = backupProjectConfig(dir);
+  if (backup) log(`✓ Configurazione precedente conservata in ${backup}`);
 
   // 1. CLAUDE.md: blocco del team tra marcatori, il resto non si tocca
   const section = subst(fs.readFileSync(path.join(KIT, "claude-section.md"), "utf8"), { TIPO: tipo, TEMPLATE: template || "da definire con mds-design", LESSONS: fwd(LESSONS), RUNTIME: fwd(RUNTIME) }).trim();
@@ -193,7 +279,20 @@ export function installProject(dir, { tipo = "website", template = "", id = "", 
   }
 
   // 3. .mds/: collegamento dashboard, stato, lezioni di progetto
-  writeJSON(path.join(dir, ".mds", "project.json"), { projectId: id || null, name, tipo, template, kitVersion: KIT_VERSION, updatedAt: new Date().toISOString() });
+  const arsenal = readJSON(path.join(KIT, "arsenal.json"), { byKind: {}, marketplace: "claude-plugins-official" });
+  const mcpAllow = [...new Set([...(prevProject.mcp?.allow ?? []), ...MCP_BASE_ALLOW, ...(arsenal.byKind[tipo] ?? []), ...(MCP_BY_KIND_EXTRA[tipo] ?? [])])];
+  writeJSON(path.join(dir, ".mds", "project.json"), {
+    ...prevProject,
+    // il collegamento alla dashboard non si perde se il progetto viene reinstallato senza --id
+    projectId: id || prevProject.projectId || null,
+    name,
+    tipo,
+    template: template || prevProject.template || "",
+    kitVersion: KIT_VERSION,
+    mcp: { ...(prevProject.mcp ?? {}), allow: mcpAllow },
+    extraWriteDirs: prevProject.extraWriteDirs ?? [],
+    updatedAt: new Date().toISOString(),
+  });
   const testsPath = path.join(dir, ".mds", "state", "tests.json");
   if (!fs.existsSync(testsPath)) writeJSON(testsPath, { _info: "Comandi di verifica del progetto (rilevati da package.json, correggili se serve) e ultimi esiti.", commands: detectCommands(dir), last_runs: [] });
   const projLessons = path.join(dir, ".mds", "lessons", "project.yaml");
@@ -206,7 +305,8 @@ export function installProject(dir, { tipo = "website", template = "", id = "", 
     let cur = fs.existsSync(gi) ? fs.readFileSync(gi, "utf8") : "";
     cur = cur.replace(/\n?# MDS Work \(brief e collegamento dashboard\)\n\.mds\/\n?/, "\n");
     // .playwright-mcp/ = screenshot e log di Sentinel (Playwright MCP): restano sul PC
-    const lines = [".mds/brief.md", ".mds/state/", ".mds/telemetry/", ".playwright-mcp/"];
+    // .mds/backup/ = copie di sicurezza della configurazione (rollback locale)
+    const lines = [".mds/brief.md", ".mds/state/", ".mds/telemetry/", ".mds/backup/", ".playwright-mcp/"];
     if (!cur.includes("# MDS Work (file locali)")) cur = `${cur.trimEnd()}\n\n# MDS Work (file locali)\n`;
     const have = new Set(cur.split(/\r?\n/).map((l) => l.trim()));
     const missing = lines.filter((l) => !have.has(l));
@@ -217,14 +317,17 @@ export function installProject(dir, { tipo = "website", template = "", id = "", 
   // 4. .claude/settings.json: hook + plugin del tipo di progetto
   const settingsPath = path.join(dir, ".claude", "settings.json");
   const settings = readJSON(settingsPath, {});
-  const hook = `node "${fwd(path.join(ROOT, "scripts", "mds-hook.mjs"))}"`;
-  const guard = `node "${fwd(path.join(ROOT, "scripts", "mds-guard.mjs"))}"`;
-  const ours = (h) => typeof h?.command === "string" && /mds-(hook|guard)\.mjs/.test(h.command);
+  // forma "exec" (command + args): nessuna shell, quindi nessun problema con spazi o "&" nei percorsi
+  const hook = { command: "node", args: [fwd(path.join(BIN, "mds-hook.mjs"))] };
+  const guard = { command: "node", args: [fwd(path.join(BIN, "mds-guard.mjs"))] };
+  const ours = (h) => /mds-(hook|guard)\.mjs/.test(`${h?.command ?? ""} ${(h?.args ?? []).join(" ")}`);
+  // [matcher, handler, onFailure]: il guard sugli strumenti sensibili BLOCCA se non può girare (fail-closed);
+  // sulle letture prosegue (le letture dei .env sono già coperte dalle regole native)
   const want = {
     SessionStart: [["", hook]],
     UserPromptSubmit: [["", hook]],
-    PreToolUse: [["Task|Agent", hook], ["^(Bash|Read|Write|Edit|MultiEdit|NotebookEdit|mcp__.*)$", guard]],
-    PostToolUse: [["Task|Agent", hook], ["Edit|Write|MultiEdit|NotebookEdit", hook], ["Bash", hook], ["Read|Grep|Glob", hook], ["mcp__.*", hook]],
+    PreToolUse: [["Task|Agent", hook], ["^(Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*)$", guard, "block"], ["^Read$", guard, "continue"]],
+    PostToolUse: [["Task|Agent", hook], ["Edit|Write|MultiEdit|NotebookEdit", hook], ["Bash|PowerShell", hook], ["Read|Grep|Glob", hook], ["mcp__.*", hook]],
     Notification: [["", hook]],
     Stop: [["", hook]],
     SubagentStop: [["", hook]],
@@ -235,17 +338,87 @@ export function installProject(dir, { tipo = "website", template = "", id = "", 
   }
   for (const [event, entries] of Object.entries(want)) {
     settings.hooks[event] ??= [];
-    for (const [matcher, command] of entries) settings.hooks[event].push({ ...(matcher ? { matcher } : {}), hooks: [{ type: "command", command, timeout: 5 }] });
+    for (const [matcher, handler, onFailure] of entries) settings.hooks[event].push({ ...(matcher ? { matcher } : {}), hooks: [{ type: "command", ...handler, timeout: 10, ...(onFailure ? { onFailure } : {}) }] });
   }
-  const arsenal = readJSON(path.join(KIT, "arsenal.json"), { byKind: {}, marketplace: "claude-plugins-official" });
+  // livello 1: regole di permesso native gestite da MDS (quelle aggiunte dal titolare restano intatte)
+  settings.permissions ??= {};
+  const managedBefore = new Set(prevProject.managedPermissions?.ask ?? []);
+  const ownerRules = (settings.permissions.ask ?? []).filter((r) => !managedBefore.has(r));
+  settings.permissions.ask = [...ownerRules, ...MDS_NATIVE_ASK.filter((r) => !ownerRules.includes(r))];
+  const pj = readJSON(path.join(dir, ".mds", "project.json"), {});
+  writeJSON(path.join(dir, ".mds", "project.json"), { ...pj, managedPermissions: { ask: MDS_NATIVE_ASK } });
   settings.enabledPlugins ??= {};
   for (const p of arsenal.byKind[tipo] ?? []) {
     const key = `${p}@${arsenal.marketplace}`;
     if (!(key in settings.enabledPlugins)) settings.enabledPlugins[key] = true;
   }
   writeJSON(settingsPath, settings);
-  log(`✓ .claude/settings.json: telemetria + guardia + gate di chiusura + ${(arsenal.byKind[tipo] ?? []).length} plugin per "${tipo}"`);
+  log(`✓ .claude/settings.json: hook v${KIT_VERSION} (guardia fail-closed, telemetria, gate) + ${MDS_NATIVE_ASK.length} regole native + ${(arsenal.byKind[tipo] ?? []).length} plugin per "${tipo}"`);
   return { name, tipo };
+}
+
+/* ------------------------------------------------------------------ */
+/*                               DIAGNOSI                               */
+/* ------------------------------------------------------------------ */
+/** Controlla protezioni e installazione. Ritorna { ok, warn, ko } e stampa un elenco leggibile. */
+export async function doctor(projectDir, { quiet = false } = {}) {
+  const res = { ok: 0, warn: 0, ko: 0, lines: [] };
+  const say = (kind, msg) => {
+    res[kind]++;
+    res.lines.push(`${kind === "ok" ? "✓" : kind === "warn" ? "⚠" : "✗"} ${msg}`);
+  };
+  const { loadPolicies } = await import("./mds-guard.mjs");
+
+  // PC
+  const [maj] = process.versions.node.split(".").map(Number);
+  say(maj >= 20 ? "ok" : "ko", `Node ${process.versions.node}`);
+  const kit = readJSON(path.join(RUNTIME, "kit.json"), null);
+  say(kit?.version === KIT_VERSION ? "ok" : "ko", `kit installato sul PC: ${kit ? `v${kit.version}` : "assente"} (atteso v${KIT_VERSION})`);
+  const manifest = readJSON(path.join(BIN, "manifest.json"), null);
+  if (!manifest) say("ko", `hook v${KIT_VERSION} non installati in ${BIN} → npm run kit -- installa`);
+  else {
+    const bad = Object.entries(manifest.files ?? {}).filter(([f, h]) => !fs.existsSync(path.join(BIN, f)) || sha256File(path.join(BIN, f)) !== h);
+    say(bad.length ? "ko" : "ok", bad.length ? `file degli hook modificati o mancanti: ${bad.map(([f]) => f).join(", ")} → npm run kit -- installa` : `hook v${KIT_VERSION}: ${Object.keys(manifest.files).length} file integri (impronte SHA-256)`);
+  }
+  const pol = loadPolicies(null, { manifestDir: BIN, candidates: [path.join(RUNTIME, "policies", "policies.json")] });
+  say(pol.problems.length ? "ko" : "ok", pol.problems.length ? `policy: ${pol.problems.join("; ")} → il guard chiederà conferma per ogni azione sensibile` : `policy: ${pol.rules.length} regole valide`);
+  const rt = readJSON(path.join(BIN, "runtime.json"), null);
+  say(rt?.envFile && fs.existsSync(rt.envFile) ? "ok" : "warn", rt?.envFile && fs.existsSync(rt.envFile) ? "collegamento eventi alla dashboard configurato" : "eventi verso la dashboard non disponibili (.env.local di MDS Work non trovato): le protezioni funzionano lo stesso");
+
+  // progetto
+  if (projectDir) {
+    const p = readJSON(path.join(projectDir, ".mds", "project.json"), null);
+    if (!p) say("ko", `${projectDir}: non è un progetto MDS (manca .mds/project.json)`);
+    else {
+      say(Number(p.kitVersion) >= KIT_VERSION ? "ok" : "warn", `progetto «${p.name}»: kit v${p.kitVersion}${Number(p.kitVersion) < KIT_VERSION ? " → aggiorna con npm run kit -- progetto <cartella>" : ""}`);
+      const s = readJSON(path.join(projectDir, ".claude", "settings.json"), {});
+      const entries = (ev) => (s.hooks?.[ev] ?? []).flatMap((g) => (g.hooks ?? []).map((h) => ({ matcher: g.matcher ?? "", ...h })));
+      const target = (h) => (h.args?.[0] ?? (String(h.command).match(/"([^"]+\.mjs)"/)?.[1] ?? ""));
+      // il guard sensibile si riconosce dal matcher, non dal nome del file (un percorso sbagliato va comunque segnalato)
+      const sensitive = entries("PreToolUse").find((h) => /Bash/.test(h.matcher) && /Write/.test(h.matcher) && /mcp__/.test(h.matcher));
+      if (!sensitive) say("ko", "guard assente sugli strumenti sensibili");
+      else {
+        say(fs.existsSync(target(sensitive)) ? "ok" : "ko", `guard: ${fs.existsSync(target(sensitive)) ? "presente" : "FILE MANCANTE"} (${target(sensitive)})`);
+        say(sensitive.onFailure === "block" ? "ok" : "ko", sensitive.onFailure === "block" ? "guard fail-closed: se non parte, Claude Code blocca l'azione" : "guard NON fail-closed (manca onFailure: block)");
+      }
+      const allHooks = Object.keys(s.hooks ?? {}).flatMap(entries).filter((h) => /\.m?js$/.test(target(h)));
+      const missing = [...new Set(allHooks.map(target).filter((t) => t && !fs.existsSync(t)))];
+      say(missing.length ? "ko" : "ok", missing.length ? `hook che puntano a file inesistenti: ${missing.join(", ")}` : `${allHooks.length} hook puntano a file esistenti`);
+      const repoRefs = allHooks.filter((h) => fwd(target(h)).startsWith(fwd(ROOT)));
+      if (repoRefs.length) say("warn", `${repoRefs.length} hook puntano ancora alla cartella del repository (si romperebbero spostandola)`);
+      const native = (s.permissions?.ask ?? []).filter((r) => MDS_NATIVE_ASK.includes(r)).length;
+      say(native === MDS_NATIVE_ASK.length ? "ok" : "ko", `regole di permesso native: ${native}/${MDS_NATIVE_ASK.length}`);
+      say(Array.isArray(p.mcp?.allow) ? "ok" : "warn", Array.isArray(p.mcp?.allow) ? `MCP autorizzati per il progetto: ${p.mcp.allow.join(", ")}` : "nessun elenco MCP autorizzati (controllo MCP disattivo)");
+      const bk = path.join(projectDir, ".mds", "backup");
+      say(fs.existsSync(bk) ? "ok" : "warn", fs.existsSync(bk) ? `${fs.readdirSync(bk).length} copie di sicurezza della configurazione (npm run kit -- ripristina <cartella>)` : "nessuna copia di sicurezza della configurazione");
+    }
+  }
+  if (!quiet) {
+    console.log("\nDiagnosi protezioni MDS");
+    for (const l of res.lines) console.log(`  ${l}`);
+    console.log(res.ko ? `\n✗ ${res.ko} problemi da correggere\n` : res.warn ? `\n⚠ tutto funziona, ${res.warn} avvisi\n` : "\n✓ protezioni a posto\n");
+  }
+  return res;
 }
 
 /* ------------------------------------------------------------------ */
@@ -265,6 +438,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       if (!userKitInstalled()) installUser();
       installProject(path.resolve(rest[0]), { tipo: opt("tipo"), template: opt("template"), id: opt("id"), nome: opt("nome") });
       console.log("\nFatto. Apri la cartella in Claude Code e scrivi: /mds-team <cosa vuoi fare>");
+    } else if (cmd === "doctor") {
+      const dir = rest[0] && !rest[0].startsWith("--") ? path.resolve(rest[0]) : fs.existsSync(path.join(process.cwd(), ".mds", "project.json")) ? process.cwd() : null;
+      const r = await doctor(dir);
+      process.exitCode = r.ko ? 1 : 0;
+    } else if (cmd === "ripristina" && rest[0]) {
+      restoreProject(path.resolve(rest[0]));
     } else if (cmd === "scan" && rest[0]) {
       const report = scanPath(path.resolve(rest[0]));
       printReport(report);

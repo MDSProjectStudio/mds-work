@@ -6,12 +6,27 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(HERE, "..");
+
+/**
+ * Dove sta .env.local:
+ * - copia installata degli hook (~/.claude/mds/bin/vN/): runtime.json accanto a questo file indica il percorso
+ *   (solo il percorso, mai le chiavi)
+ * - repository MDS Work: <repo>/.env.local
+ */
+export function envFilePath() {
+  try {
+    const rt = JSON.parse(fs.readFileSync(path.join(HERE, "runtime.json"), "utf8"));
+    if (rt.envFile) return rt.envFile;
+  } catch {}
+  return path.join(ROOT, ".env.local");
+}
 
 export function loadEnv() {
   const env = {};
   try {
-    for (const line of fs.readFileSync(path.join(ROOT, ".env.local"), "utf8").split(/\r?\n/)) {
+    for (const line of fs.readFileSync(envFilePath(), "utf8").split(/\r?\n/)) {
       const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
       if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, "");
     }
