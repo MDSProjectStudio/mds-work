@@ -25,7 +25,11 @@
 | `tests/unit/vault.test.ts` | **Vettore congelato della cassaforte.** Password, sale e IV di prova → testo cifrato atteso, generato da un'implementazione WebCrypto indipendente. Prova anche: sblocco + decifratura; password sbagliata rifiutata; voce manomessa rifiutata; nuova cassaforte + andata e ritorno. Se il formato di `lib/vault.ts` cambiasse, il test fallirebbe. |
 | `tests/unit/engine.test.ts` | `quoteTotal`, `normalizeDB`, azioni principali di `reduce()` (progetto, incassi automatici, incasso valido/non valido, task vuote ignorate) e **4 test di caratterizzazione** (§3) |
 | `tests/unit/access.test.ts` | `requireOwner` in modalità offline: localhost sì, host esterno 403, origine diversa 403 (CSRF), stessa origine sì, `MDS_ALLOW_REMOTE=1` solo se esplicito. Le variabili Supabase vengono svuotate **prima** dell'import: nessun collegamento alla produzione |
-| `tests/unit/schema.test.ts` | `supabase/schema.sql` applicato a PGlite: 3 tabelle, RLS attiva su tutte, `app_state` con una sola riga, schema rieseguibile senza errori |
+| `tests/unit/schema.test.ts` | `supabase/schema.sql` applicato a PGlite: 3 tabelle, RLS **attivata** su tutte, `app_state` con una sola riga, schema rieseguibile senza errori |
+
+> **Precisazione del 10/11 (richiesta del titolare) — limiti di questi test:**
+> - **Accessi:** M1 verifica `requireOwner` **solo in modalità offline** (senza Supabase) e verifica che lo schema **attivi** RLS su una copia locale. **Non** è un collaudo dell'autenticazione online (accesso del titolare tramite Supabase) né dei **permessi effettivi** dei diversi ruoli (`anon`, `authenticated`, `service_role`). RLS attivata non basta da sola: i permessi per ruolo delle tabelle e funzioni nuove sono provati in M2 su PostgreSQL locale.
+> - **Cassaforte:** al vettore di M1 (decifratura di un testo cifrato atteso) si è aggiunto in M2 il **confronto esatto della cifratura prodotta**. Password, sale e IV sono fissi **solo nel test**, che sostituisce temporaneamente il generatore casuale. `lib/vault.ts` non è stato modificato.
 
 **Dati:** solo sintetici ("Progetto finto", "credenziale-finta-123", host `.invalid`). Nessuna custodia reale, nessuna chiave reale, nessun accesso a Supabase.
 

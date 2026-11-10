@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createVault, decryptText, encryptText, unlockVault } from "@/lib/vault";
 
 /**
@@ -28,6 +28,26 @@ describe("cassaforte: formato congelato", () => {
     const bad = Buffer.from(VECTOR.entry.ct, "base64");
     bad[0] ^= 1;
     await expect(decryptText(key!, VECTOR.entry.iv, bad.toString("base64"))).rejects.toThrow();
+  });
+
+  it("la cifratura PRODOTTA da lib/vault.ts coincide byte per byte con il vettore atteso", async () => {
+    // Sale e IV fissi SOLO in questo test: si sostituisce temporaneamente il generatore casuale
+    // (crypto.getRandomValues) con valori noti; il codice dell'app non viene toccato.
+    const fixed = [Buffer.from(VECTOR.meta.salt, "base64"), Buffer.from(VECTOR.meta.checkIv, "base64"), Buffer.from(VECTOR.entry.iv, "base64")];
+    const spy = vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation(<T extends ArrayBufferView | null>(arr: T): T => {
+      const next = fixed.shift();
+      if (!next || !arr || next.length !== arr.byteLength) throw new Error("valore fisso inatteso");
+      new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength).set(next);
+      return arr;
+    });
+    try {
+      const { meta, key } = await createVault(VECTOR.password);
+      expect(meta).toEqual(VECTOR.meta); // sale, iterazioni, IV e testo cifrato di controllo identici
+      expect(await encryptText(key, VECTOR.entry.plain)).toEqual({ iv: VECTOR.entry.iv, ct: VECTOR.entry.ct });
+      expect(fixed).toHaveLength(0); // usati esattamente i tre valori fissi
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("una cassaforte nuova usa i parametri attesi e fa andata e ritorno", async () => {
