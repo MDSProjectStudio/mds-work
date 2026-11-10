@@ -33,8 +33,33 @@ const freePort = () =>
     });
   });
 
+/** Ruoli come in Supabase (valgono per tutto il cluster): anon e authenticated = browser, service_role = server. */
+async function createRoles(admin: { host: string; port: number; user: string; password: string }) {
+  const c = new pg.Client({ ...admin, database: "postgres" });
+  await c.connect();
+  await c.query(`do $$ begin
+    if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
+    if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
+    if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
+  end $$;`);
+  await c.end();
+}
+
 export default async function setup(project: TestProject) {
-  if (process.platform !== "win32") throw new Error("Le prove PostgreSQL locali usano i binari Windows: su Linux/CI servirà il pacchetto linux-x64 (M5)");
+  // CI (Linux): PostgreSQL già avviato come contenitore di servizio, isolato e usa-e-getta (vedi .github/workflows/ci.yml)
+  if (process.env.MDS_TEST_PG_HOST) {
+    const admin = {
+      host: process.env.MDS_TEST_PG_HOST,
+      port: Number(process.env.MDS_TEST_PG_PORT ?? 5432),
+      user: process.env.MDS_TEST_PG_USER ?? "postgres",
+      password: process.env.MDS_TEST_PG_PASSWORD ?? "",
+    };
+    if (!/^(localhost|127\.0\.0\.1)$/.test(admin.host)) throw new Error("Le prove PostgreSQL accettano solo un server locale (localhost)");
+    await createRoles(admin);
+    project.provide("pgAdmin", admin);
+    return;
+  }
+  if (process.platform !== "win32") throw new Error("Senza MDS_TEST_PG_HOST le prove usano i binari PostgreSQL per Windows");
   const { initdb, pg_ctl } = (await import("@embedded-postgres/windows-x64")) as { initdb: string; pg_ctl: string };
 
   const dir = mkdtempSync(path.join(os.tmpdir(), "mds-pg-prova-"));
@@ -54,11 +79,7 @@ export default async function setup(project: TestProject) {
   ]);
 
   const admin = { host: "127.0.0.1", port, user: "postgres", password };
-  // Ruoli come in Supabase (valgono per tutto il cluster): anon e authenticated = browser, service_role = server
-  const c = new pg.Client({ ...admin, database: "postgres" });
-  await c.connect();
-  await c.query(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;`);
-  await c.end();
+  await createRoles(admin);
 
   project.provide("pgAdmin", admin);
 

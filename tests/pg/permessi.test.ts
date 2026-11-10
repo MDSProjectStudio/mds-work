@@ -74,11 +74,11 @@ describe("ruolo del server (service_role): accesso necessario e sufficiente", ()
 });
 
 describe("RLS", () => {
-  it("attiva su tutte le tabelle, nuove ed esistenti", async () => {
+  it("attiva su tutte le tabelle, nuove (M2, M3) ed esistenti", async () => {
     const r = await t.admin.query<{ relname: string; relrowsecurity: boolean }>(
       "select relname, relrowsecurity from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' order by 1",
     );
-    expect(r.rows.map((x) => x.relname)).toEqual(["agent_events", "app_config", "app_state", "app_state_history", "applied_actions", "launch_requests"]);
+    expect(r.rows.map((x) => x.relname)).toEqual(["agent_events", "app_config", "app_state", "app_state_history", "applied_actions", "launch_requests", "portal_requests"]);
     expect(r.rows.every((x) => x.relrowsecurity)).toBe(true);
   });
 });
