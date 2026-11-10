@@ -5,7 +5,7 @@ Fonte: *Master Upgrade Blueprint* del 9 novembre 2026 (approvato nell'architettu
 | Fase | Stato | Rapporto |
 |---|---|---|
 | 0 — Preparazione e protezione | **chiusa** (commit `353810b`) | [FASE-0.md](fasi/FASE-0.md) |
-| 1 — Affidabilità della dashboard | M1 **approvata** (`0434c98`); M2 **sviluppata e collaudata solo in locale** (migrazione NON applicata in produzione); M3–M6 da approvare | [piano](fasi/FASE-1-PIANO.md) · [M1](fasi/FASE-1-M1.md) · [M2](fasi/FASE-1-M2.md) |
+| 1 — Affidabilità della dashboard | **sviluppo locale completato** (M1–M6); nulla pubblicato né applicato alla produzione; operazioni esterne da approvare | [piano](fasi/FASE-1-PIANO.md) · [M1](fasi/FASE-1-M1.md) · [M2](fasi/FASE-1-M2.md) · [rapporto finale](fasi/FASE-1-RAPPORTO-FINALE.md) |
 | 2 — Multiprogetto reale | da approvare | — |
 | 3 — Potenziamento MDS Team | da approvare | — |
 | 4 — Provider e runner AI | da approvare | — |
