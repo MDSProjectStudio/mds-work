@@ -37,7 +37,7 @@ export function loadEnv() {
 export function supabase(timeoutMs = 8000) {
   const { url, key } = loadEnv();
   if (!url || !key) return null;
-  const req = async (method, table, query = "", body) => {
+  const req = async (method, table, query = "", body, returning = false) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -48,12 +48,12 @@ export function supabase(timeoutMs = 8000) {
           apikey: key,
           Authorization: `Bearer ${key}`,
           "Content-Type": "application/json",
-          Prefer: method === "GET" ? "" : "return=minimal",
+          Prefer: method === "GET" ? "" : returning ? "return=representation" : "return=minimal",
         },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
-      return method === "GET" ? r.json() : null;
+      return method === "GET" || returning ? r.json() : null;
     } finally {
       clearTimeout(t);
     }
@@ -62,6 +62,8 @@ export function supabase(timeoutMs = 8000) {
     select: (table, query) => req("GET", table, query),
     insert: (table, rows) => req("POST", table, "", rows),
     update: (table, query, patch) => req("PATCH", table, query, patch),
+    /** Aggiornamento condizionato: restituisce le righe davvero modificate (vuoto = condizione non vera). */
+    updateReturning: (table, query, patch) => req("PATCH", table, query, patch, true),
     remove: (table, query) => req("DELETE", table, query),
   };
 }

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { normalizeDB, quoteTotal, reduce, seedDB } from "@/lib/engine";
+import { normalizeDB, quoteTotal, reduce, seedDB, withIdSeed } from "@/lib/engine";
 
 /**
  * Test del motore della dashboard (dati sintetici).
- * I test "CARATTERIZZAZIONE" fotografano il comportamento ATTUALE, compresi i punti delicati
- * che M2 dovrà cambiare di proposito (stato modificato in place, id casuali, markPaid che inverte).
+ * I test "CARATTERIZZAZIONE" fotografano il comportamento di reduce() così com'è.
+ * M2 lo compensa (applyAction lavora su una copia e con id derivati dall'actionId) e aggiunge
+ * setPaymentStatus al posto dell'interruttore markPaid: vedi la sezione "M2".
  */
 const NOW = Date.UTC(2026, 10, 9, 12);
 const fresh = () => seedDB(NOW, false);
@@ -66,7 +67,7 @@ describe("reduce: azioni principali", () => {
   });
 });
 
-describe("CARATTERIZZAZIONE (da cambiare in M2)", () => {
+describe("CARATTERIZZAZIONE di reduce()", () => {
   it("reduce modifica lo stato ricevuto (non ne crea una copia)", () => {
     const db = withProject();
     const out = reduce(db, { type: "addInbox", text: "promemoria finto" }, NOW);
@@ -74,7 +75,7 @@ describe("CARATTERIZZAZIONE (da cambiare in M2)", () => {
     expect(db.inbox.some((i) => i.text === "promemoria finto")).toBe(true);
   });
 
-  it("gli identificativi sono casuali: la stessa azione su due stati uguali produce id diversi", () => {
+  it("fuori da withIdSeed gli identificativi sono casuali: la stessa azione su due stati uguali produce id diversi", () => {
     const a = withProject();
     const b = structuredClone(a);
     reduce(a, { type: "addPayment", projectId: a.projects[0].id, label: "Incasso finto", amount: 100 }, NOW);
@@ -84,7 +85,7 @@ describe("CARATTERIZZAZIONE (da cambiare in M2)", () => {
     expect(a.payments.at(-1)!.id).not.toBe(b.payments.at(-1)!.id);
   });
 
-  it("markPaid INVERTE lo stato: ripeterla annulla il pagamento (non idempotente)", () => {
+  it("markPaid (compatibilità) INVERTE lo stato: ripeterla annulla il pagamento", () => {
     const db = withProject();
     reduce(db, { type: "addPayment", projectId: db.projects[0].id, label: "Incasso finto", amount: 100 }, NOW);
     const pay = db.payments.at(-1)!;
@@ -115,5 +116,36 @@ describe("CARATTERIZZAZIONE (da cambiare in M2)", () => {
     expect(db.tasks.length).toBe(before + 2);
     reduce(db, { type: "resolveApproval", id: "ap_sintetica", decision: "approved" }, NOW);
     expect(db.tasks.length).toBe(before + 2);
+  });
+});
+
+describe("M2: id deterministici e stato esplicito degli incassi", () => {
+  it("dentro withIdSeed la stessa azione con lo stesso seme produce gli STESSI id", () => {
+    const a = withProject();
+    const b = structuredClone(a);
+    withIdSeed("azione-finta-0001", () => reduce(a, { type: "addPayment", projectId: a.projects[0].id, label: "Incasso finto", amount: 100 }, NOW));
+    withIdSeed("azione-finta-0001", () => reduce(b, { type: "addPayment", projectId: b.projects[0].id, label: "Incasso finto", amount: 100 }, NOW));
+    expect(a.payments.at(-1)!.id).toBe(b.payments.at(-1)!.id);
+  });
+
+  it("semi diversi producono id diversi; fuori dal seme si torna al casuale", () => {
+    const a = withProject();
+    withIdSeed("azione-finta-0001", () => reduce(a, { type: "addInbox", text: "uno" }, NOW));
+    withIdSeed("azione-finta-0002", () => reduce(a, { type: "addInbox", text: "due" }, NOW));
+    expect(a.inbox[0].id).not.toBe(a.inbox[1].id);
+    expect(new Set(a.inbox.map((i) => i.id)).size).toBe(a.inbox.length);
+  });
+
+  it("setPaymentStatus è idempotente: ripeterla non annulla il pagamento", () => {
+    const db = withProject();
+    reduce(db, { type: "addPayment", projectId: db.projects[0].id, label: "Incasso finto", amount: 100 }, NOW);
+    const pay = db.payments.at(-1)!;
+    reduce(db, { type: "setPaymentStatus", id: pay.id, status: "paid" }, NOW);
+    reduce(db, { type: "setPaymentStatus", id: pay.id, status: "paid" }, NOW + 5000);
+    expect(pay.status).toBe("paid");
+    expect(pay.paidAt).toBe(NOW); // la seconda non cambia nulla, nemmeno la data
+    reduce(db, { type: "setPaymentStatus", id: pay.id, status: "due" }, NOW);
+    expect(pay.status).toBe("due");
+    expect(pay.paidAt).toBeUndefined();
   });
 });

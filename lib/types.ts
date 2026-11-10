@@ -292,6 +292,7 @@ export type Action =
   | { type: "inboxToTask"; id: string; projectId: string }
   | { type: "addPayment"; projectId: string; label: string; amount: number; dueDate?: string }
   | { type: "markPaid"; id: string }
+  | { type: "setPaymentStatus"; id: string; status: "paid" | "due" }
   | { type: "deletePayment"; id: string }
   | { type: "vaultInit"; meta: VaultMeta }
   | { type: "vaultSave"; entry: VaultEntry }

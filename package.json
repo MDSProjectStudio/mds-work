@@ -14,7 +14,8 @@
     "backup": "node scripts/backup.mjs",
     "backup:verifica": "node --no-warnings scripts/restore-test.mjs",
     "prova:isolata": "node scripts/prova-isolata.mjs",
-    "test:unit": "node node_modules/vitest/vitest.mjs run"
+    "test:unit": "node node_modules/vitest/vitest.mjs run",
+    "test:pg": "node node_modules/vitest/vitest.mjs run --config vitest.pg.config.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -31,13 +32,18 @@
     "@electric-sql/pglite": "0.5.12",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
+    "pg": "8.23.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "8.3.5",
     "vitest": "4.1.12"
+  },
+  "optionalDependencies": {
+    "@embedded-postgres/windows-x64": "17.10.0-beta.17"
   }
 }

@@ -61,7 +61,7 @@ export function PaymentsList({ projectId }: { projectId?: string }) {
                 </div>
               </div>
               <span className={clsx("mono font-semibold", p.status === "paid" ? "text-lime" : late ? "text-rose" : "")}>{fmtMoney(p.amount)}</span>
-              <button className={clsx("btn btn-sm", p.status === "paid" ? "" : "btn-ok")} onClick={() => dispatch({ type: "markPaid", id: p.id })}>
+              <button className={clsx("btn btn-sm", p.status === "paid" ? "" : "btn-ok")} onClick={() => dispatch({ type: "setPaymentStatus", id: p.id, status: p.status === "paid" ? "due" : "paid" })}>
                 {p.status === "paid" ? "Annulla" : "Incassato"}
               </button>
               <button className="btn btn-sm !px-2" onClick={() => dispatch({ type: "deletePayment", id: p.id })} aria-label="Elimina pagamento">

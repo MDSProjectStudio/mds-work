@@ -1,31 +1,45 @@
-import { loadDB, requireOwner } from "@/lib/server/store";
-import { queueLaunch } from "@/lib/server/launch";
+import { currentStore, loadDB, requireOwner } from "@/lib/server/store";
+import { ACTION_ID_RE, launchProblem, launchRow, requestHash } from "@/lib/server/mutate";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { authEnabled } from "@/lib/supabase/config";
 
 /**
  * "Lavora con il team": mette in coda una richiesta che il motore locale (npm run motore)
  * sul PC del titolare prende, prepara il progetto con il kit e apre Claude Code.
+ * Corpo: { projectId, taskId?, actionId }. Lo stesso actionId non crea mai due avvii.
  */
 export async function POST(req: Request) {
   const denied = await requireOwner(req);
   if (denied) return denied;
-  if (!authEnabled || !process.env.SUPABASE_SECRET_KEY) return Response.json({ error: "Serve la dashboard collegata a Supabase" }, { status: 400 });
+  const store = currentStore();
 
-  let body: { projectId?: unknown; taskId?: unknown };
+  let body: { projectId?: unknown; taskId?: unknown; actionId?: unknown };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: "Richiesta non valida" }, { status: 400 });
   }
+  if (typeof body.actionId !== "string" || !ACTION_ID_RE.test(body.actionId)) {
+    return Response.json({ error: "Pagina non aggiornata: ricarica la dashboard e riprova" }, { status: 400 });
+  }
   const db = await loadDB();
   const p = db.projects.find((x) => x.id === body.projectId);
   if (!p) return Response.json({ error: "Progetto non trovato" }, { status: 404 });
+  const problem = launchProblem(store, p);
+  if (problem) return Response.json({ error: problem }, { status: 400 });
   const task = typeof body.taskId === "string" ? db.tasks.find((t) => t.id === body.taskId && t.projectId === p.id) : undefined;
 
-  const r = await queueLaunch(db, p, { task });
-  if (r.error) return Response.json({ error: r.error }, { status: 400 });
-  return Response.json({ id: r.id });
+  const hash = requestHash({ projectId: p.id, taskId: task?.id ?? null });
+  try {
+    const r = await store.enqueueLaunch({ ...launchRow(db, p, `launch:${body.actionId}`, { task }), request_hash: hash });
+    if (r.status === "action_id_reused") {
+      return Response.json({ error: "Identificativo d'azione già usato per un'altra richiesta: ricarica la pagina e riprova" }, { status: 422 });
+    }
+    return Response.json({ id: r.id, duplicate: r.status === "duplicate" });
+  } catch (e) {
+    console.error("[launch]", e);
+    const msg = e instanceof Error && e.message.startsWith("Database non aggiornato") ? e.message : "Database non raggiungibile";
+    return Response.json({ error: msg }, { status: 503 });
+  }
 }
 
 export async function GET(req: Request) {

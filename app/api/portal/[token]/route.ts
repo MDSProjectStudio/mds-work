@@ -1,5 +1,5 @@
-import { uid } from "@/lib/engine";
-import { loadDB, saveDB } from "@/lib/server/store";
+import { currentStore, loadDB } from "@/lib/server/store";
+import { addPortalRequest } from "@/lib/server/mutate";
 
 /**
  * Portale clienti (pubblico): espone SOLO nome progetto/cliente
@@ -54,8 +54,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   if (message.length < 8) return Response.json({ error: "Scrivi qualche parola in più" }, { status: 400 });
   if (message.length > 2000) return Response.json({ error: "Massimo 2000 caratteri" }, { status: 400 });
 
-  const db = await loadDB();
-  db.requests.push({ id: uid("rq_"), projectId: p.id, author: author || p.client || "Cliente", message, status: "new", createdAt: now });
-  await saveDB(db);
+  // salvataggio versionato con ritentativo (M2); la tabella separata delle richieste arriverà con M3
+  const r = await addPortalRequest(currentStore(), p.id, author || p.client || "Cliente", message, now);
+  if (r.status !== "saved" && r.status !== "duplicate") return Response.json({ error: "Servizio occupato, riprova tra un attimo" }, { status: 503 });
   return Response.json({ ok: true });
 }

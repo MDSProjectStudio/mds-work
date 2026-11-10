@@ -77,7 +77,7 @@ export function TodayView() {
                         </button>
                       )}
                       {f.kind === "payment" && (
-                        <button className="btn btn-sm btn-ok" onClick={() => dispatch({ type: "markPaid", id: f.id })}>
+                        <button className="btn btn-sm btn-ok" onClick={() => dispatch({ type: "setPaymentStatus", id: f.id, status: "paid" })}>
                           Incassato
                         </button>
                       )}

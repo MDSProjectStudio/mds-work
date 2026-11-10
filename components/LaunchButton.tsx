@@ -5,8 +5,12 @@ import clsx from "clsx";
 import { Check, Loader2, Rocket, TriangleAlert } from "lucide-react";
 import { authEnabled } from "@/lib/supabase/config";
 import type { Project, Task } from "@/lib/types";
+import { createIntentTracker } from "@/lib/action-intent";
 
-type State = { kind: "idle" } | { kind: "sending" } | { kind: "waiting"; id: number; since: number } | { kind: "ok" } | { kind: "error"; msg: string };
+/** Stesso progetto/task cliccato due volte di fila → stesso actionId (vedi lib/action-intent.ts). */
+const launchTracker = createIntentTracker();
+
+type State ={ kind: "idle" } | { kind: "sending" } | { kind: "waiting"; id: number; since: number } | { kind: "ok" } | { kind: "error"; msg: string };
 
 /**
  * "Lavora con il team": il motore locale sul PC prepara il progetto con il kit,
@@ -22,10 +26,21 @@ export function LaunchButton({ project, task, compact, className }: { project: P
     if (!authEnabled) return setSt({ kind: "error", msg: "Disponibile con la dashboard online (Supabase)" });
     if (!project.localPath) return setSt({ kind: "error", msg: "Imposta la cartella del progetto in Impostazioni" });
     setSt({ kind: "sending" });
+    const op = { launch: project.id, taskId: task?.id ?? null };
+    const { actionId } = launchTracker.begin(op);
     try {
-      const r = await fetch("/api/launch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId: project.id, taskId: task?.id }) });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "Errore");
+      // i ritentativi di rete riusano lo stesso actionId: il server non crea mai due avvii
+      let r: Response | null = null;
+      for (let attempt = 0; attempt < 3 && !r; attempt++) {
+        try {
+          r = await fetch("/api/launch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId: project.id, taskId: task?.id, actionId }) });
+        } catch {
+          if (attempt === 2) throw new Error("Server non raggiungibile");
+          await new Promise((res) => setTimeout(res, 500 * (attempt + 1)));
+        }
+      }
+      const j = await r!.json();
+      if (!r!.ok) throw new Error(j.error ?? "Errore");
       const since = Date.now();
       setSt({ kind: "waiting", id: j.id, since });
       clearInterval(timer.current);
@@ -46,6 +61,8 @@ export function LaunchButton({ project, task, compact, className }: { project: P
       }, 2000);
     } catch (e) {
       setSt({ kind: "error", msg: e instanceof Error ? e.message : "Errore" });
+    } finally {
+      launchTracker.end(op, actionId);
     }
   };
 

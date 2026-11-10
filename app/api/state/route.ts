@@ -1,18 +1,19 @@
-import { advance } from "@/lib/engine";
-import { loadDB, requireOwner, saveDB } from "@/lib/server/store";
+import { currentStore, requireOwner } from "@/lib/server/store";
 import { withLiveEvents } from "@/lib/server/live";
+import { advanceAndSave } from "@/lib/server/mutate";
 
 export async function GET(req: Request) {
   const denied = await requireOwner(req);
   if (denied) return denied;
   try {
-    const db = await loadDB();
-    if (advance(db, Date.now())) await saveDB(db);
+    // avanza la simulazione; salva solo se nessuno ha scritto nel frattempo (salvataggio versionato)
+    const db = await advanceAndSave(currentStore(), Date.now());
     // dopo il salvataggio: gli eventi dal vivo si mostrano ma non si salvano nello stato
     const view = await withLiveEvents(structuredClone(db));
     return Response.json(view, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[state]", e);
-    return Response.json({ error: "Database non raggiungibile" }, { status: 503 });
+    const msg = e instanceof Error && e.message.startsWith("Database non aggiornato") ? e.message : "Database non raggiungibile";
+    return Response.json({ error: msg }, { status: 503 });
   }
 }

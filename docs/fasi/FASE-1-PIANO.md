@@ -2,7 +2,9 @@
 
 **Stato:**
 - **M1 completata** sul ramo locale `fase-1/m1-test`, commit `a2a037c`; rapporto in [FASE-1-M1.md](FASE-1-M1.md).
-- **M2–M6 non autorizzate.**
+- **M1 approvata** dal titolare sul commit `0434c98`.
+- **M2 sviluppata e collaudata SOLO in locale** sul ramo `fase-1/m2-concorrenza` (rapporto in [FASE-1-M2.md](FASE-1-M2.md)); migrazione **non** applicata alla produzione.
+- **M3–M6 non autorizzate.**
 - M2 e M3 sono state **riviste il 10/11/2026** su richiesta del titolare: ritentativi e duplicazioni, concorrenza reale, compatibilità e rollback, portale su tabella separata.
 
 **Obiettivo:** la dashboard non perde dati con scritture contemporanee, è coperta da test automatici, nessun codice arriva in produzione senza controlli, gli errori si vedono e alcune imperfezioni dell'interfaccia sono corrette.
@@ -46,7 +48,7 @@ Stima complessiva: **L–XL**, circa 8–12 sessioni di lavoro.
 - **Accettazione:** `npm run test:unit` verde; vettori della cassaforte verificati contro `lib/vault.ts`.
 - **Rollback:** rimozione delle dipendenze di sviluppo; nessun effetto sull'app.
 
-### M2 — Concorrenza sui dati (la più importante) — rivista il 10/11
+### M2 — Concorrenza sui dati (la più importante) — rivista il 10/11 — ✅ sviluppata e collaudata in locale ([FASE-1-M2.md](FASE-1-M2.md))
 
 **Problema (audit, confermato dai test di M1):**
 1. Ogni scrittura fa "leggi tutto → modifica → riscrivi tutto": due scritture contemporanee possono cancellarsi a vicenda.
