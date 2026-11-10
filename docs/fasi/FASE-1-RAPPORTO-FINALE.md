@@ -311,3 +311,13 @@ Richieste: anteprime Vercel, prove isolate come condizione, costi come stime. So
 - Le impostazioni **reali** di Vercel (ambiente delle variabili) e i piani/quote del tuo account **non sono verificabili da qui**: la difesa 1 e il controllo dei costi restano operazioni tue.
 - Il blocco nel codice protegge solo il codice **nuovo**. Un'anteprima con codice vecchio ha, come difesa, soltanto l'assenza delle chiavi (§6.0, punto 1) e, a passaggio avvenuto, il blocco del database.
 - Il progetto di prova (§6.4) non esiste: tutte le prove A–I sono **NON PROVATE** e il rilascio è subordinato a esse.
+
+---
+
+## 9. Controllo prima della pubblicazione (blocco di prove del 10/11/2026)
+
+Prima di qualsiasi push, sul materiale che diventerebbe pubblico (il repository è **pubblico** e il push pubblica **tutta la storia** del ramo, 18 commit rispetto a `main`):
+- **Segreti:** nessuna chiave, token o indirizzo di progetto Supabase reale (controllati file tracciati e storia completa). Un solo valore dall'aspetto di chiave, una stringa **finta** di test `sb_secret_…`, avrebbe potuto far scattare il controllo anti-segreti di GitHub: ora il test la compone a runtime.
+- **Dati personali:** il nome utente di Windows e l'impronta della chiave dei backup comparivano in `docs/fasi/FASE-0*.md` (storia compresa). Rimossi.
+- **Storia riscritta (locale, mai pubblicata).** Per farlo ho riscritto i 18 commit del ramo, quindi **gli identificativi dei commit sono cambiati**: i riferimenti nei documenti sono stati aggiornati (nessuna differenza di contenuto, a parte i tre file ripuliti). La storia originale è conservata solo in locale nel ramo `backup/prima-della-pubblicazione-801ae85`, che **non va pubblicato** perché contiene i dati rimossi. `main` e il tag `baseline-2026-11-09` non sono toccati.
+- **Verifica da clone pulito** del commit candidato: installazione da lockfile, tipi, ESLint a zero avvisi, 72 test unitari, 86 prove PostgreSQL, eval del kit: tutti superati (Windows, locale).
