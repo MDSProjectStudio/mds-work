@@ -360,4 +360,6 @@ npm run kit -- ripristina "C:\Users\utente\Desktop\Projects & Code\mds-prova-tea
 | `b3d1ef9` | correzione della falla N2 trovata nel collaudo guidato |
 | commit successivo | questo rapporto con gli esiti del collaudo e della copia d'emergenza |
 
-**Stato:** collaudo guidato concluso, copia d'emergenza protetta esportata e recupero verificato. Fase 0 **in attesa della chiusura da parte del titolare**. La Fase 1 **non** è autorizzata.
+**Stato: FASE 0 CHIUSA.** La chiusura è stata approvata dal titolare sul commit `353810b` (9 novembre 2026). Restano documentati il fallimento iniziale della N2, la correzione `b3d1ef9` e il successivo esito positivo (§5.5).
+
+Dopo la chiusura è stato autorizzato l'aggiornamento del solo `mds-prova-team` alle 56 regole native: vedi il rapporto di M1 in `docs/fasi/FASE-1-M1.md`.

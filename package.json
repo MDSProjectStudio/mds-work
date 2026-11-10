@@ -13,7 +13,8 @@
     "eval": "node scripts/eval.mjs",
     "backup": "node scripts/backup.mjs",
     "backup:verifica": "node --no-warnings scripts/restore-test.mjs",
-    "prova:isolata": "node scripts/prova-isolata.mjs"
+    "prova:isolata": "node scripts/prova-isolata.mjs",
+    "test:unit": "node node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -27,6 +28,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.12",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -34,6 +36,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "8.3.5",
+    "vitest": "4.1.12"
   }
 }
