@@ -1,6 +1,6 @@
 # Fase 1 — Rapporto finale dello sviluppo locale (M2–M6)
 
-**Autorizzazione:** "AUTORIZZAZIONE UNICA — COMPLETA LO SVILUPPO LOCALE DELLA FASE 1" (10/11/2026), a partire da `84a26a4`.
+**Autorizzazione:** "AUTORIZZAZIONE UNICA — COMPLETA LO SVILUPPO LOCALE DELLA FASE 1" (10/11/2026), a partire da `75f7c2c`.
 
 **Stato:** tutto il lavoro **locale** della Fase 1 è completato. Il lavoro è sul ramo `fase-1/m2-concorrenza` (che contiene Fase 0, M1 e M2 approvati).
 - Niente è stato pubblicato o applicato alla produzione: nessun push, merge, deploy o migrazione in produzione.
@@ -11,15 +11,15 @@ Dettagli di M2 (concorrenza, esiti incerti, rollback con manutenzione): [FASE-1-
 
 ---
 
-## 1. Commit (dopo `84a26a4`)
+## 1. Commit (dopo `75f7c2c`)
 
 | Commit | Contenuto |
 |---|---|
-| `acdfbe0` | M2: avviso **persistente** degli esiti incerti; M4: modalità reale degli agenti (UX-1) e freschezza dei segnali (UX-3) |
-| `d2b0c0c` | M3: portale su tabella separata, limite atomico in Postgres, importazione senza doppioni (UX-6) |
-| `68fdfa7` | M4: test dei flussi e accessibilità (Playwright + axe), UX-7, ESLint a **0 avvisi**, 2 difetti corretti |
-| `d495c40` | M5: CI GitHub (Linux + Windows), Dependabot "solo segnalazioni", prove PostgreSQL anche su Linux |
-| `31acbaf` | M6: registro interno degli errori, backup esteso alle tabelle nuove, backup pianificato (non attivato) |
+| `9dd6d19` | M2: avviso **persistente** degli esiti incerti; M4: modalità reale degli agenti (UX-1) e freschezza dei segnali (UX-3) |
+| `ad61ffe` | M3: portale su tabella separata, limite atomico in Postgres, importazione senza doppioni (UX-6) |
+| `2c15a85` | M4: test dei flussi e accessibilità (Playwright + axe), UX-7, ESLint a **0 avvisi**, 2 difetti corretti |
+| `703a915` | M5: CI GitHub (Linux + Windows), Dependabot "solo segnalazioni", prove PostgreSQL anche su Linux |
+| `1c56179` | M6: registro interno degli errori, backup esteso alle tabelle nuove, backup pianificato (non attivato) |
 | (questo) | rapporto finale, roadmap e piano aggiornati |
 
 Totale: 56 file, +1.858 / −186 righe.
@@ -105,7 +105,7 @@ Totale: 56 file, +1.858 / −186 righe.
 | Test nel browser (build di produzione offline, Edge del PC, dati finti in cartella temporanea) | **10/10**: 7 flussi + accessibilità a 375 / 768 / 1440 px |
 | Accessibilità (axe, WCAG 2.1 A/AA) su 10 schermate + portale | **0 violazioni** escluso il contrasto (vedi §5) |
 | Eval del kit | 60/60 · 23/23 · 71/71 · 16/16 |
-| Confronto visivo prima/dopo (`84a26a4` vs attuale, stessi dati, 3 schermate × 3 larghezze) | identità grafica **invariata**; cambiano solo le etichette volute ("simulazione" invece di "live", modalità reale) |
+| Confronto visivo prima/dopo (`75f7c2c` vs attuale, stessi dati, 3 schermate × 3 larghezze) | identità grafica **invariata**; cambiano solo le etichette volute ("simulazione" invece di "live", modalità reale) |
 | `.data/db.json` | intatto (impronta uguale) |
 | Residui | nessun processo `postgres`, nessuna porta di prova aperta, nessuna attività pianificata; cartelle temporanee delle mie prove rimosse |
 

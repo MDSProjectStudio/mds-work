@@ -1,7 +1,7 @@
 # Fase 1 · M1 — Base di test e vettori della cassaforte: rapporto
 
-**Stato:** completata. Ramo locale `fase-1/m1-test`, partito da `353810b` (Fase 0 chiusa).
-- Commit del lavoro: `a2a037c`.
+**Stato:** completata. Ramo locale `fase-1/m1-test`, partito da `8c4d32d` (Fase 0 chiusa).
+- Commit del lavoro: `5a62446`.
 - Questo rapporto e la revisione del piano sono nel commit successivo.
 - **Nessun push, merge o deploy.** Nessuna modifica alla produzione o al database.
 
@@ -85,7 +85,7 @@ Tutto è affrontato in M2.2. PGlite ha **una sola connessione**: per la concorre
 
 ## 4. Lavori collegati autorizzati insieme a M1
 
-- **Chiusura della Fase 0** registrata in `docs/fasi/FASE-0.md` e nella roadmap. Restano documentati il fallimento iniziale di N2, la correzione (`b3d1ef9`) e l'esito positivo della nuova prova.
+- **Chiusura della Fase 0** registrata in `docs/fasi/FASE-0.md` e nella roadmap. Restano documentati il fallimento iniziale di N2, la correzione (`b6cac58`) e l'esito positivo della nuova prova.
 - **`mds-prova-team` aggiornato alle 56 regole native:**
   - configurazione precedente conservata in `.mds/backup/2026-11-09T22-25-44-769Z`;
   - `projectId` invariato (`p_1thk2tvd1z5`), quindi il collegamento alla dashboard è mantenuto;

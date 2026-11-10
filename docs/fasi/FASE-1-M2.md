@@ -1,7 +1,7 @@
 # Fase 1 · M2 — Concorrenza sui dati: rapporto
 
 **Stato:** sviluppata e collaudata **solo in locale**.
-- Ramo locale `fase-1/m2-concorrenza`, partito da `0434c98` (M1 approvata), che include tutto il lavoro approvato (Fase 0 + M1).
+- Ramo locale `fase-1/m2-concorrenza`, partito da `554abc9` (M1 approvata), che include tutto il lavoro approvato (Fase 0 + M1).
 - La migrazione **non** è stata applicata alla produzione. Nessun push, merge o deploy. Nessun collegamento a Supabase durante le prove.
 
 **Autorizzazione (10/11/2026):** "AUTORIZZO M2 ESCLUSIVAMENTE COME SVILUPPO E COLLAUDO LOCALE".
@@ -12,7 +12,7 @@
 
 ## 0-bis. Correzioni dopo la verifica del titolare
 
-Ogni correzione ha una **regressione** che **fallisce con il codice precedente** (`cacf1cd`) e **passa ora**. La prova è stata fatta rimettendo per un momento il file vecchio.
+Ogni correzione ha una **regressione** che **fallisce con il codice precedente** (`8af9454`) e **passa ora**. La prova è stata fatta rimettendo per un momento il file vecchio.
 
 | # | Caso segnalato | Causa | Correzione | Prova |
 |---|---|---|---|---|

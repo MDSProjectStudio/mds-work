@@ -3,9 +3,9 @@
 **Ramo:** `fase-0/protezioni` (solo locale, non pubblicato) · **Baseline:** tag `baseline-2026-11-09` → `206eb7a`
 
 **Revisioni:**
-1. 9 novembre 2026, commit `e37d4da`: prima consegna.
-2. 9 novembre 2026, commit `5c19166`: correzioni autorizzate dopo la revisione del titolare. Riguardano il fail-closed delle installazioni v3, la copia protetta della chiave, la classificazione delle prove e le prove guidate.
-3. 9 novembre 2026, commit `b3d1ef9` + aggiornamento del rapporto: **collaudo guidato con il titolare** (§5.5). È stata trovata e chiusa la falla N2 (lettura di `.env` da terminale); la copia d'emergenza protetta della chiave è stata esportata e il recupero verificato (§3.3).
+1. 9 novembre 2026, commit `ac92406`: prima consegna.
+2. 9 novembre 2026, commit `6289206`: correzioni autorizzate dopo la revisione del titolare. Riguardano il fail-closed delle installazioni v3, la copia protetta della chiave, la classificazione delle prove e le prove guidate.
+3. 9 novembre 2026, commit `b6cac58` + aggiornamento del rapporto: **collaudo guidato con il titolare** (§5.5). È stata trovata e chiusa la falla N2 (lettura di `.env` da terminale); la copia d'emergenza protetta della chiave è stata esportata e il recupero verificato (§3.3).
 
 **Perimetro rispettato:**
 - `main`, database, interfaccia e produzione invariati;
@@ -252,7 +252,7 @@ Dopo la revisione 2 restavano senza prova dal vivo: la modifica di un `.env` con
 |---|---|---|---|
 | N1 | Read `.env.local` | `Read(**/.env.local)` | ✓ conferma; "No" → non letto (verificato nella trascrizione) |
 | N2 | Bash `cat .env.local` | regola `Read` sui comandi | ✗ **FALLITA**: nessuna conferma, file letto (solo dati finti) → falla, vedi §6 n. 9 |
-| N2 ripetuta | Bash `cat .env.local` (nuova sessione, dopo `b3d1ef9`) | `Bash(cat *.env*)` | ✓ conferma; "No" → interrotto |
+| N2 ripetuta | Bash `cat .env.local` (nuova sessione, dopo `b6cac58`) | `Bash(cat *.env*)` | ✓ conferma; "No" → interrotto |
 | N3 | Bash `git push --force origin main` | `Bash(git push *)` | ✓ conferma; "No" rispettato |
 | N4 | Bash `git clean -n` | `Bash(git clean *)` | ✓ conferma; "No" rispettato |
 | N5 | Bash `npm test` | uso normale | ✓ nessuna conferma; test passato |
@@ -260,7 +260,7 @@ Dopo la revisione 2 restavano senza prova dal vivo: la modifica di un `.env` con
 
 Nota: alla prima richiesta della N2 l'agente si era rifiutato di agire, ritenendolo un aggiramento del "No" della N1. Il rifiuto non è stato contato come prova; la N2 è stata eseguita dopo un'autorizzazione esplicita.
 
-**Configurazione 2 — installazione v3 completa** (`v3\`, dopo `b3d1ef9`)
+**Configurazione 2 — installazione v3 completa** (`v3\`, dopo `b6cac58`)
 | # | Azione | Protezione verificata | Registro del guard | Esito |
 |---|---|---|---|---|
 | V1 | Write in `fuori-progetto\prova.txt` | guard `scrittura-fuori-progetto` | `scrittura-fuori-progetto · ask` | ✓ conferma; "No" → cartella vuota |
@@ -271,7 +271,7 @@ Nota: alla prima richiesta della N2 l'agente si era rifiutato di agire, ritenend
 
 **Esito:** 12 esecuzioni.
 - **11 superate**;
-- **1 fallita** (N2), che ha portato alla correzione `b3d1ef9`, poi verificata dal vivo (N2 ripetuta e V3).
+- **1 fallita** (N2), che ha portato alla correzione `b6cac58`, poi verificata dal vivo (N2 ripetuta e V3).
 - La procedura generale per ripetere il collaudo è in [FASE-0-PROVE-GUIDATE.md](FASE-0-PROVE-GUIDATE.md).
 
 ## 6. Difetti trovati e corretti
@@ -288,7 +288,7 @@ Nota: alla prima richiesta della N2 l'agente si era rifiutato di agire, ritenend
 8. `esporta-chiave` scriveva la chiave in chiaro di default. Ora la copia è protetta da frase segreta; quella in chiaro richiede `--non-cifrata` ed è documentata come tale.
 
 **Collaudo guidato:**
-9. **Lettura di `.env` da terminale senza conferma (N2)**: le regole `Read(...)` in modalità "ask" non coprono comandi come `cat`, e il guard copriva solo lo strumento Read. Corretto in `b3d1ef9`:
+9. **Lettura di `.env` da terminale senza conferma (N2)**: le regole `Read(...)` in modalità "ask" non coprono comandi come `cat`, e il guard copriva solo lo strumento Read. Corretto in `b6cac58`:
    - nuova regola del guard `env-shell` per Bash e PowerShell, sui file `.env` con segreti, escluse le varianti `.example`, `.sample`, `.template`, `.dist`;
    - 17 nuove regole native "ask" (`cat`, `type`, `head`, `tail`, `less`, `more`, `grep`, `source`, `cp`, `sed`, `awk`, `Get-Content`, `gc`, `Select-String`, `Copy-Item`…);
    - 16 casi di regressione.
@@ -355,11 +355,11 @@ npm run kit -- ripristina "C:\Users\utente\Desktop\Projects & Code\mds-prova-tea
 ## 11. Commit (ramo `fase-0/protezioni`, solo locale)
 | Commit | Contenuto |
 |---|---|
-| `e37d4da` | prima consegna |
-| `5c19166` | revisione 2 (approvata dal titolare) |
-| `b3d1ef9` | correzione della falla N2 trovata nel collaudo guidato |
+| `ac92406` | prima consegna |
+| `6289206` | revisione 2 (approvata dal titolare) |
+| `b6cac58` | correzione della falla N2 trovata nel collaudo guidato |
 | commit successivo | questo rapporto con gli esiti del collaudo e della copia d'emergenza |
 
-**Stato: FASE 0 CHIUSA.** La chiusura è stata approvata dal titolare sul commit `353810b` (9 novembre 2026). Restano documentati il fallimento iniziale della N2, la correzione `b3d1ef9` e il successivo esito positivo (§5.5).
+**Stato: FASE 0 CHIUSA.** La chiusura è stata approvata dal titolare sul commit `8c4d32d` (9 novembre 2026). Restano documentati il fallimento iniziale della N2, la correzione `b6cac58` e il successivo esito positivo (§5.5).
 
 Dopo la chiusura è stato autorizzato l'aggiornamento del solo `mds-prova-team` alle 56 regole native: vedi il rapporto di M1 in `docs/fasi/FASE-1-M1.md`.
