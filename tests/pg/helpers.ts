@@ -100,6 +100,14 @@ export function pgStore(pool: pg.Pool, opts: { launches?: boolean } = {}): State
       const r = await pool.query<{ r: unknown }>("select public.enqueue_launch($1::jsonb) as r", [JSON.stringify(row)]);
       return parseEnqueueResult(r.rows[0].r);
     },
+    async actionOutcome(actionId, requestHash) {
+      const r = await pool.query<{ r: "applied" | "action_id_reused" | "unknown" }>("select public.action_outcome($1, $2) as r", [actionId, requestHash]);
+      return r.rows[0].r;
+    },
+    async findLaunch(dedupeKey) {
+      const r = await pool.query<{ id: string; request_hash: string | null }>("select id, request_hash from public.launch_requests where dedupe_key = $1", [dedupeKey]);
+      return r.rows.length ? { id: Number(r.rows[0].id), request_hash: r.rows[0].request_hash } : null;
+    },
   };
 }
 
@@ -110,6 +118,16 @@ export async function legacyUpsert(client: pg.Pool | pg.Client, data: DB) {
      on conflict (id) do update set data = excluded.data, updated_at = excluded.updated_at`,
     [JSON.stringify(data)],
   );
+}
+
+/** Inserimento "cieco" del codice VECCHIO in launch_requests (queueLaunch / api/launch di prima). */
+export async function legacyLaunchInsert(client: pg.Pool | pg.Client, projectId = "p_finto") {
+  await client.query("insert into public.launch_requests (project_id, task_id, template, brief) values ($1, null, null, 'brief del codice vecchio')", [projectId]);
+}
+
+/** Cambio di modalità come lo farebbe il titolare dal SQL Editor (proprietario del database). */
+export async function setWriteMode(admin: pg.Client, legacy: "allow" | "block", neww: "allow" | "block") {
+  await admin.query("select public.set_write_mode($1, $2)", [legacy, neww]);
 }
 
 /** Stato iniziale sintetico: un progetto finto con team reale e cartella (per gli avvii). */

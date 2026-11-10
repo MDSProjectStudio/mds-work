@@ -1,9 +1,12 @@
 -- =====================================================================
 -- MDS Work · Fase 1 · M2 — ROLLBACK della migrazione di concorrenza
 -- =====================================================================
--- Da eseguire SOLO dopo essere tornati al codice precedente (mai con il
--- codice nuovo in produzione: le sue scritture fallirebbero).
+-- Da eseguire SOLO alla fine della procedura di ritorno indietro (docs/fasi/FASE-1-M2.md §7):
+-- codice precedente già in produzione e verificato, modalità legacy_writes='allow',
+-- new_writes='block'. Mai con il codice nuovo in produzione: le sue scritture fallirebbero.
 -- Prima: `npm run backup` + `npm run backup:verifica -- --app`.
+-- Attenzione: togliendo i trigger sparisce anche il blocco delle scritture del codice nuovo
+-- (che però non può più salvare: le sue funzioni vengono rimosse).
 --
 -- Cosa fa: toglie il COMPORTAMENTO aggiunto da M2 (trigger e funzioni).
 -- Cosa NON fa: non cancella dati. La colonna `data`, lo storico, il registro
@@ -17,10 +20,14 @@ begin;
 
 drop trigger if exists app_state_before_write on public.app_state;
 drop trigger if exists app_state_after_update on public.app_state;
+drop trigger if exists launch_requests_before_write on public.launch_requests;
 drop function if exists public.save_app_state(bigint, jsonb, text, text, jsonb);
 drop function if exists public.enqueue_launch(jsonb);
+drop function if exists public.action_outcome(text, text);
+drop function if exists public.set_write_mode(text, text);
 drop function if exists public.app_state_before_write();
 drop function if exists public.app_state_after_update();
+drop function if exists public.launch_requests_before_write();
 
 commit;
 

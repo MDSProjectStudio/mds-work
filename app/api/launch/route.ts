@@ -21,6 +21,20 @@ export async function POST(req: Request) {
   if (typeof body.actionId !== "string" || !ACTION_ID_RE.test(body.actionId)) {
     return Response.json({ error: "Pagina non aggiornata: ricarica la dashboard e riprova" }, { status: 400 });
   }
+  const dedupeKey = `launch:${body.actionId}`;
+  const hash = requestHash({ projectId: body.projectId ?? null, taskId: typeof body.taskId === "string" ? body.taskId : null });
+  try {
+    // ritentativo di un esito incerto: se l'avvio è già in coda si risponde subito, anche se nel frattempo
+    // il progetto è cambiato (le verifiche sotto valgono solo per un avvio nuovo)
+    const prev = await store.findLaunch(dedupeKey);
+    if (prev) {
+      if (prev.request_hash !== hash) return Response.json({ error: "Identificativo d'azione già usato per un'altra richiesta: ricarica la pagina e riprova" }, { status: 422 });
+      return Response.json({ id: prev.id, duplicate: true });
+    }
+  } catch (e) {
+    console.error("[launch]", e);
+    return Response.json({ error: "Database non raggiungibile" }, { status: 503 });
+  }
   const db = await loadDB();
   const p = db.projects.find((x) => x.id === body.projectId);
   if (!p) return Response.json({ error: "Progetto non trovato" }, { status: 404 });
@@ -28,9 +42,10 @@ export async function POST(req: Request) {
   if (problem) return Response.json({ error: problem }, { status: 400 });
   const task = typeof body.taskId === "string" ? db.tasks.find((t) => t.id === body.taskId && t.projectId === p.id) : undefined;
 
-  const hash = requestHash({ projectId: p.id, taskId: task?.id ?? null });
+  if (typeof body.taskId === "string" && !task) return Response.json({ error: "Task non trovata" }, { status: 404 });
   try {
-    const r = await store.enqueueLaunch({ ...launchRow(db, p, `launch:${body.actionId}`, { task }), request_hash: hash });
+    const r = await store.enqueueLaunch({ ...launchRow(db, p, dedupeKey, { task }), request_hash: hash });
+    if (r.status === "blocked") return Response.json({ error: "Manutenzione in corso: nessun avvio è stato messo in coda. Riprova più tardi." }, { status: 423 });
     if (r.status === "action_id_reused") {
       return Response.json({ error: "Identificativo d'azione già usato per un'altra richiesta: ricarica la pagina e riprova" }, { status: 422 });
     }

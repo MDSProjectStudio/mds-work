@@ -69,6 +69,16 @@ function supabaseStore(): StateStore {
       if (error) throw sbError(error.message);
       return parseSaveResult(data);
     },
+    async actionOutcome(actionId, requestHash) {
+      const { data, error } = await supabaseAdmin().rpc("action_outcome", { p_action_id: actionId, p_request_hash: requestHash });
+      if (error) throw sbError(error.message);
+      return data === "applied" || data === "action_id_reused" ? data : "unknown";
+    },
+    async findLaunch(dedupeKey) {
+      const { data, error } = await supabaseAdmin().from("launch_requests").select("id, request_hash").eq("dedupe_key", dedupeKey).maybeSingle();
+      if (error) throw sbError(error.message);
+      return data ? { id: Number(data.id), request_hash: (data.request_hash as string | null) ?? null } : null;
+    },
     async enqueueLaunch(row) {
       const { data, error } = await supabaseAdmin().rpc("enqueue_launch", { p_launch: row });
       if (error) throw sbError(error.message);

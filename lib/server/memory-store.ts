@@ -1,5 +1,5 @@
 import type { DB } from "../types";
-import type { EnqueueResult, LaunchRow, SaveRequest, SaveResult, StateStore } from "./state-types";
+import type { ActionOutcome, EnqueueResult, LaunchRow, SaveRequest, SaveResult, StateStore } from "./state-types";
 
 /**
  * Archivio in memoria con la STESSA semantica di save_app_state (versione, registro azioni, avvii).
@@ -55,6 +55,15 @@ export function createMemoryStore(opts: MemoryStoreOptions): StateStore & { laun
       nextLaunchId += newRows.length;
       opts.persist?.(data, version);
       return { status: "saved", version, launchIds: ids };
+    },
+    async actionOutcome(actionId, requestHash): Promise<ActionOutcome> {
+      const prev = applied.get(actionId);
+      if (!prev) return "unknown";
+      return prev.hash === requestHash ? "applied" : "action_id_reused";
+    },
+    async findLaunch(dedupeKey) {
+      const r = launchRows.find((x) => x.dedupe_key === dedupeKey);
+      return r ? { id: r.id, request_hash: r.request_hash ?? null } : null;
     },
     async enqueueLaunch(row): Promise<EnqueueResult> {
       const prev = launchRows.find((r) => r.dedupe_key === row.dedupe_key);

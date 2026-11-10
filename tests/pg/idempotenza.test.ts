@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createIntentTracker } from "@/lib/action-intent";
+import { sendWithIntent } from "@/lib/action-send";
 import { applyAction, launchRow, requestHash } from "@/lib/server/mutate";
 import type { StateStore } from "@/lib/server/state-types";
 import { NOW, count, freshDb, initState, pgStore, type TestDb } from "./helpers";
@@ -54,13 +55,33 @@ describe("doppio clic, ritentativi e operazioni intenzionali", () => {
     expect(await paymentsLabelled("Risposta persa")).toBe(1);
   });
 
+  it("REGRESSIONE esito incerto: salvato, nessuna risposta per tutti i tentativi automatici, nuovo clic dopo 3 s → un solo incasso", async () => {
+    let clock = 0;
+    const tracker = createIntentTracker({ now: () => clock });
+    const op = { type: "addPayment" as const, projectId: "p_finto", label: "Esito incerto PG", amount: 40 };
+    let lose = 3;
+    // "rete": la richiesta arriva al server (salvataggio vero su PostgreSQL), la risposta si perde
+    const send = async (actionId: string) => {
+      const r = await applyAction(store, op, actionId, NOW);
+      if (lose-- > 0) throw new TypeError("Failed to fetch (simulato)");
+      return Response.json({ ok: true }, { headers: { "X-MDS-Action": r.status } });
+    };
+    const first = await sendWithIntent({ tracker, op, send, wait: async () => {} });
+    expect(first.outcome).toBe("uncertain");
+    clock += 3000;
+    const second = await sendWithIntent({ tracker, op, send, wait: async () => {} });
+    expect(second.actionId).toBe(first.actionId);
+    expect(second.outcome).toBe("confirmed");
+    expect(await paymentsLabelled("Esito incerto PG")).toBe(1);
+  });
+
   it("due operazioni uguali ma INTENZIONALI (id diversi) → due incassi", async () => {
     let clock = 0;
     const tracker = createIntentTracker({ now: () => clock });
     const op = { type: "addPayment" as const, projectId: "p_finto", label: "Due rate uguali", amount: 100 };
     const a = tracker.begin(op);
     expect((await applyAction(store, op, a.actionId, NOW)).status).toBe("saved");
-    tracker.end(op, a.actionId);
+    tracker.end(op, a.actionId, "confirmed");
     clock += 10_000; // il titolare la ripete di proposito più tardi
     const b = tracker.begin(op);
     expect(b.actionId).not.toBe(a.actionId);
@@ -122,7 +143,7 @@ describe("approvazioni e avvii del team senza doppioni", () => {
     const row = { ...launchRow(db, p, `launch:${id}`), request_hash: requestHash({ projectId: p.id, taskId: null }) };
     const res = await Promise.all(Array.from({ length: 5 }, () => pgStore(t.pool(1)).enqueueLaunch(row)));
     expect(res.filter((r) => r.status === "queued")).toHaveLength(1);
-    expect(new Set(res.map((r) => r.id)).size).toBe(1);
+    expect(new Set(res.map((r) => ("id" in r ? r.id : 0))).size).toBe(1);
     const other = await store.enqueueLaunch({ ...row, request_hash: requestHash({ projectId: p.id, taskId: "t_altra" }) });
     expect(other.status).toBe("action_id_reused");
     const fresh = await store.enqueueLaunch({ ...row, dedupe_key: `launch:${randomUUID()}` });

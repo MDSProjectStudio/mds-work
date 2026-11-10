@@ -22,7 +22,7 @@ describe("identificativo d'azione nel browser", () => {
   it("doppio clic subito dopo la conclusione (entro 2 s) → stesso identificativo", () => {
     const { tracker, advance } = setup();
     const a = tracker.begin(pay);
-    tracker.end(pay, a.actionId);
+    tracker.end(pay, a.actionId, "confirmed");
     advance(1500);
     expect(tracker.begin(pay).actionId).toBe(a.actionId);
   });
@@ -30,7 +30,7 @@ describe("identificativo d'azione nel browser", () => {
   it("stessa operazione ripetuta di proposito dopo la finestra → identificativo NUOVO", () => {
     const { tracker, advance } = setup();
     const a = tracker.begin(pay);
-    tracker.end(pay, a.actionId);
+    tracker.end(pay, a.actionId, "confirmed");
     advance(2500);
     const b = tracker.begin(pay);
     expect(b.actionId).not.toBe(a.actionId);
@@ -46,8 +46,93 @@ describe("identificativo d'azione nel browser", () => {
     const { tracker, advance } = setup();
     const a = tracker.begin(pay);
     tracker.begin(pay);
-    tracker.end(pay, a.actionId); // il primo finisce, il secondo è ancora in corso
+    tracker.end(pay, a.actionId, "confirmed"); // il primo finisce, il secondo è ancora in corso
     advance(5000);
     expect(tracker.begin(pay).actionId).toBe(a.actionId);
+  });
+});
+
+describe("esito incerto, rifiuto definitivo e conferma", () => {
+  const memory = () => {
+    let data: Record<string, { id: string; at: number }> = {};
+    return { load: () => structuredClone(data), save: (d: Record<string, { id: string; at: number }>) => (data = structuredClone(d)) };
+  };
+
+  it("esito INCERTO: l'id resta anche dopo 3 s, 1 ora, 1 giorno (finché non arriva una risposta)", () => {
+    const { tracker, advance } = setup();
+    const a = tracker.begin(pay);
+    tracker.end(pay, a.actionId, "uncertain");
+    for (const ms of [3000, 3_600_000, 86_400_000]) {
+      advance(ms);
+      const b = tracker.begin(pay);
+      expect(b.actionId).toBe(a.actionId);
+      expect(b.uncertain).toBe(true);
+      tracker.end(pay, b.actionId, "uncertain");
+    }
+  });
+
+  it("dopo la CONFERMA di un tentativo incerto torna la regola dei 2 s", () => {
+    const { tracker, advance } = setup();
+    const a = tracker.begin(pay);
+    tracker.end(pay, a.actionId, "uncertain");
+    advance(10_000);
+    const b = tracker.begin(pay);
+    tracker.end(pay, b.actionId, "confirmed"); // il server risponde "già applicata"
+    advance(2500);
+    expect(tracker.begin(pay).actionId).not.toBe(a.actionId);
+  });
+
+  it("vale anche con un orologio che parte da 0 (nessun valore 'magico' scambiato per 'assente')", () => {
+    let t = 0;
+    const tracker = createIntentTracker({ now: () => t });
+    const a = tracker.begin(pay);
+    tracker.end(pay, a.actionId, "uncertain");
+    t += 3000;
+    expect(tracker.begin(pay).actionId).toBe(a.actionId);
+  });
+
+  it("RIFIUTO definitivo: il tentativo successivo usa un id nuovo", () => {
+    const { tracker } = setup();
+    const a = tracker.begin(pay);
+    tracker.end(pay, a.actionId, "rejected");
+    expect(tracker.begin(pay).actionId).not.toBe(a.actionId);
+  });
+
+  it("rifiuto definitivo dopo un esito incerto: il server conferma che non era applicata → id nuovo", () => {
+    const { tracker, advance } = setup();
+    const a = tracker.begin(pay);
+    tracker.end(pay, a.actionId, "uncertain");
+    advance(5000);
+    const b = tracker.begin(pay);
+    expect(b.actionId).toBe(a.actionId);
+    tracker.end(pay, b.actionId, "rejected");
+    expect(tracker.begin(pay).actionId).not.toBe(a.actionId);
+  });
+
+  it("l'esito incerto sopravvive al ricaricamento della pagina (persistenza) e scade dopo 7 giorni", () => {
+    let t = 5_000_000;
+    let n = 0;
+    const store = memory();
+    const make = () => createIntentTracker({ now: () => t, newId: () => `id-finto-${++n}`, persistence: store });
+    const first = make();
+    const a = first.begin(pay);
+    first.end(pay, a.actionId, "uncertain");
+    t += 60_000;
+    const reloaded = make(); // nuova pagina
+    const b = reloaded.begin(pay);
+    expect(b.actionId).toBe(a.actionId);
+    reloaded.end(pay, b.actionId, "uncertain");
+    t += 8 * 86_400_000;
+    expect(make().begin(pay).actionId).not.toBe(a.actionId);
+  });
+
+  it("due invii contemporanei con lo stesso id: se uno è confermato l'altro incerto non conta", () => {
+    const { tracker, advance } = setup();
+    const a = tracker.begin(pay);
+    tracker.begin(pay);
+    tracker.end(pay, a.actionId, "confirmed");
+    tracker.end(pay, a.actionId, "uncertain");
+    advance(2500);
+    expect(tracker.begin(pay).actionId).not.toBe(a.actionId);
   });
 });

@@ -56,6 +56,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   // salvataggio versionato con ritentativo (M2); la tabella separata delle richieste arriverà con M3
   const r = await addPortalRequest(currentStore(), p.id, author || p.client || "Cliente", message, now);
+  if (r.status === "blocked") return Response.json({ error: "Servizio in manutenzione, riprova più tardi" }, { status: 503 });
   if (r.status !== "saved" && r.status !== "duplicate") return Response.json({ error: "Servizio occupato, riprova tra un attimo" }, { status: 503 });
   return Response.json({ ok: true });
 }

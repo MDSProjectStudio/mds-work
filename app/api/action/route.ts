@@ -39,7 +39,14 @@ export async function POST(req: Request) {
     if (r.status === "conflict_exhausted") {
       return Response.json({ error: "Troppe modifiche contemporanee: riprova tra un attimo" }, { status: 409 });
     }
-    return Response.json(await withLiveEvents(structuredClone(r.db)), { headers: { "Cache-Control": "no-store", "X-MDS-Action": r.status } });
+    if (r.status === "blocked") {
+      // 423: rifiuto DEFINITIVO, nulla è stato salvato (il browser può usare un nuovo identificativo dopo)
+      return Response.json({ error: "Manutenzione in corso: nessuna modifica è stata salvata. Riprova più tardi." }, { status: 423 });
+    }
+    // dopo un salvataggio riuscito la risposta non deve mai diventare un errore:
+    // se gli eventi dal vivo non sono disponibili si risponde con lo stato salvato
+    const view = await withLiveEvents(structuredClone(r.db)).catch(() => r.db);
+    return Response.json(view, { headers: { "Cache-Control": "no-store", "X-MDS-Action": r.status } });
   } catch (e) {
     console.error("[action]", action.type, e);
     const msg = e instanceof Error ? e.message : "";

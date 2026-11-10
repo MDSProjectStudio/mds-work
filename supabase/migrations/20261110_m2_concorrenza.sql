@@ -9,15 +9,20 @@
 --   1. app_state: colonne `version` e `written_by`; trigger che incrementa
 --      SEMPRE la versione (anche per le scritture del codice vecchio) e
 --      conserva lo storico delle versioni precedenti (ultime 200).
---   2. app_config: interruttore `legacy_writes` ('allow' | 'block') per
---      bloccare le scritture dirette del codice vecchio durante il passaggio.
+--   2. app_config: due interruttori per il passaggio e il ritorno indietro
+--        legacy_writes ('allow'|'block'): scritture dirette del codice VECCHIO
+--                                          (app_state e nuovi avvii in launch_requests)
+--        new_writes    ('allow'|'block'): scritture del codice NUOVO (funzioni)
+--      Entrambi 'block' = MANUTENZIONE: nessuno scrive, il motore non prende richieste.
+--      Cambio con set_write_mode(): attende che finiscano le scritture in corso.
 --   3. applied_actions: registro delle azioni applicate (una volta sola).
---   4. launch_requests: `dedupe_key` unica e `request_hash`.
+--   4. launch_requests: `dedupe_key` unica e `request_hash`; trigger di blocco.
 --   5. save_app_state(): salvataggio condizionato alla versione + registro
 --      azioni + avvii del team, TUTTO nella stessa transazione.
 --   6. enqueue_launch(): "Lavora con il team" senza doppioni.
---   7. Permessi: tabelle e funzioni nuove SOLO per service_role (il server);
---      anon e authenticated (browser) esclusi esplicitamente. RLS attiva.
+--   7. action_outcome(): l'azione con questo identificativo è già stata applicata?
+--   8. Permessi minimi su tabelle, SEQUENZE e funzioni nuove: solo service_role
+--      (il server); anon, authenticated e PUBLIC esclusi. RLS attiva.
 --
 -- Rieseguibile: ogni istruzione è idempotente.
 -- Rollback: supabase/migrations/20261110_m2_concorrenza.down.sql
@@ -29,12 +34,20 @@ begin;
 alter table public.app_state add column if not exists version bigint not null default 0;
 alter table public.app_state add column if not exists written_by text not null default 'legacy';
 
--- 2. Interruttore per le scritture del codice vecchio ------------------
+-- 2. Interruttori di scrittura --------------------------------------------
 create table if not exists public.app_config (
   id int primary key default 1 check (id = 1),
   legacy_writes text not null default 'allow' check (legacy_writes in ('allow', 'block')),
   updated_at timestamptz not null default now()
 );
+alter table public.app_config add column if not exists new_writes text not null default 'allow';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'app_config_new_writes_check') then
+    alter table public.app_config add constraint app_config_new_writes_check check (new_writes in ('allow', 'block'));
+  end if;
+end
+$$;
 insert into public.app_config (id) values (1) on conflict (id) do nothing;
 alter table public.app_config enable row level security;
 
@@ -60,27 +73,33 @@ create table if not exists public.applied_actions (
 create index if not exists applied_actions_created on public.applied_actions (created_at);
 alter table public.applied_actions enable row level security;
 
--- 5. Avvii del team: niente doppioni, presa condizionata ---------------
+-- 5. Avvii del team: niente doppioni ------------------------------------
 alter table public.launch_requests add column if not exists dedupe_key text;
 alter table public.launch_requests add column if not exists request_hash text;
 -- la presa da parte del motore usa solo `status` (pending → claimed → started): nessuna colonna nuova
 create unique index if not exists launch_requests_dedupe_key on public.launch_requests (dedupe_key);
 
--- 6. Trigger: versione sempre crescente + blocco opzionale del vecchio --
+-- 6. Trigger ----------------------------------------------------------------
+-- Ogni scrittura legge gli interruttori con un lucchetto CONDIVISO su app_config:
+-- set_write_mode() (che lo aggiorna) attende quindi la fine delle scritture già in corso,
+-- e le scritture successive vedono il nuovo valore.
 create or replace function public.app_state_before_write() returns trigger
 language plpgsql
 set search_path = public, pg_temp
 as $$
 declare
   w text := nullif(current_setting('mds.writer', true), '');
-  mode text;
+  legacy text;
+  neww text;
 begin
-  if w is null then
-    select legacy_writes into mode from public.app_config where id = 1;
-    if coalesce(mode, 'allow') = 'block' then
-      raise exception 'MDS: scrittura diretta su app_state bloccata: usare save_app_state()'
-        using errcode = 'P0001', hint = 'app_config.legacy_writes = block';
-    end if;
+  select legacy_writes, new_writes into legacy, neww from public.app_config where id = 1 for share;
+  if w is null and coalesce(legacy, 'allow') = 'block' then
+    raise exception 'MDS: scrittura diretta su app_state bloccata: usare save_app_state()'
+      using errcode = 'P0001', hint = 'app_config.legacy_writes = block';
+  end if;
+  if w is not null and coalesce(neww, 'allow') = 'block' then
+    raise exception 'MDS: scritture del codice nuovo sospese (manutenzione)'
+      using errcode = 'P0001', hint = 'app_config.new_writes = block';
   end if;
   if tg_op = 'UPDATE' then
     new.version := old.version + 1;
@@ -106,6 +125,35 @@ begin
 end
 $$;
 
+-- launch_requests:
+--  INSERT diretto (codice vecchio: queueLaunch, api/launch) → bloccato se legacy_writes = 'block'
+--  INSERT tramite funzioni nuove                            → bloccato se new_writes = 'block'
+--  UPDATE (motore sul PC: presa e stato)                     → bloccato solo in MANUTENZIONE (entrambi 'block')
+create or replace function public.launch_requests_before_write() returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  w text := nullif(current_setting('mds.writer', true), '');
+  legacy text;
+  neww text;
+begin
+  select legacy_writes, new_writes into legacy, neww from public.app_config where id = 1 for share;
+  if tg_op = 'INSERT' then
+    if w is null and coalesce(legacy, 'allow') = 'block' then
+      raise exception 'MDS: avvio diretto bloccato: usare save_app_state() o enqueue_launch()'
+        using errcode = 'P0001', hint = 'app_config.legacy_writes = block';
+    end if;
+    if w is not null and coalesce(neww, 'allow') = 'block' then
+      raise exception 'MDS: avvii sospesi (manutenzione)' using errcode = 'P0001', hint = 'app_config.new_writes = block';
+    end if;
+  elsif coalesce(legacy, 'allow') = 'block' and coalesce(neww, 'allow') = 'block' then
+    raise exception 'MDS: manutenzione in corso: richieste di avvio bloccate' using errcode = 'P0001', hint = 'manutenzione';
+  end if;
+  return new;
+end
+$$;
+
 drop trigger if exists app_state_before_write on public.app_state;
 create trigger app_state_before_write
   before insert or update on public.app_state
@@ -116,12 +164,20 @@ create trigger app_state_after_update
   after update on public.app_state
   for each row execute function public.app_state_after_update();
 
+drop trigger if exists launch_requests_before_write on public.launch_requests;
+create trigger launch_requests_before_write
+  before insert or update on public.launch_requests
+  for each row execute function public.launch_requests_before_write();
+
 -- 7. Salvataggio atomico ------------------------------------------------
 -- Esiti (campo "status"):
 --   saved            stato salvato; "version" = nuova versione; "launch_ids" = avvii creati
 --   duplicate        azione già applicata con lo stesso contenuto: niente viene riapplicato
 --   action_id_reused stesso identificativo ma contenuto DIVERSO: rifiutato
+--   blocked          scritture del codice nuovo sospese (manutenzione): nulla salvato
 --   conflict         la versione letta non è più quella attuale: rileggere e ricalcolare
+-- Il controllo del registro viene PRIMA di quello di manutenzione: un'azione già applicata
+-- risulta "duplicate" anche durante la manutenzione (il browser non la ritenterà come nuova).
 -- Qualsiasi errore (es. avvio non valido) annulla TUTTA la transazione.
 create or replace function public.save_app_state(
   p_expected_version bigint,
@@ -135,6 +191,7 @@ security invoker
 set search_path = public, pg_temp
 as $$
 declare
+  neww text;
   cur_version bigint;
   prev_hash text;
   prev_version bigint;
@@ -156,6 +213,8 @@ begin
   -- marca la scrittura come "nuova" (vale solo per questa transazione)
   perform set_config('mds.writer', 'save_app_state', true);
 
+  -- interruttori (lucchetto condiviso: un cambio di modalità attende questa transazione)
+  select new_writes into neww from public.app_config where id = 1 for share;
   -- serializza le scritture: blocca la riga dello stato
   select version into cur_version from public.app_state where id = 1 for update;
 
@@ -169,6 +228,10 @@ begin
         end if;
         return jsonb_build_object('status', 'duplicate', 'version', coalesce(cur_version, 0), 'applied_version', prev_version);
       end if;
+    end if;
+
+    if coalesce(neww, 'allow') = 'block' then
+      return jsonb_build_object('status', 'blocked', 'version', coalesce(cur_version, 0));
     end if;
 
     if coalesce(cur_version, 0) <> p_expected_version then
@@ -215,13 +278,15 @@ end
 $$;
 
 -- 8. "Lavora con il team" senza doppioni --------------------------------
--- Esiti: queued (nuovo), duplicate (stessa richiesta già in coda), action_id_reused (contenuto diverso)
+-- Esiti: queued (nuovo), duplicate (stessa richiesta già in coda), action_id_reused (contenuto diverso),
+--        blocked (manutenzione). Come sopra: il controllo dei doppioni viene prima della manutenzione.
 create or replace function public.enqueue_launch(p_launch jsonb) returns jsonb
 language plpgsql
 security invoker
 set search_path = public, pg_temp
 as $$
 declare
+  neww text;
   lid bigint;
   prev_id bigint;
   prev_hash text;
@@ -229,14 +294,24 @@ begin
   if coalesce(p_launch->>'dedupe_key', '') = '' or coalesce(p_launch->>'request_hash', '') = '' then
     raise exception 'MDS: dedupe_key e request_hash obbligatori' using errcode = '22023';
   end if;
-  insert into public.launch_requests (project_id, task_id, template, brief, dedupe_key, request_hash)
-  values (p_launch->>'project_id', p_launch->>'task_id', p_launch->>'template', p_launch->>'brief', p_launch->>'dedupe_key', p_launch->>'request_hash')
-  on conflict (dedupe_key) do nothing
-  returning id into lid;
-  if lid is not null then
-    return jsonb_build_object('status', 'queued', 'id', lid);
-  end if;
+  perform set_config('mds.writer', 'enqueue_launch', true);
+  select new_writes into neww from public.app_config where id = 1 for share;
+
   select id, request_hash into prev_id, prev_hash from public.launch_requests where dedupe_key = p_launch->>'dedupe_key';
+  if prev_id is null then
+    if coalesce(neww, 'allow') = 'block' then
+      return jsonb_build_object('status', 'blocked');
+    end if;
+    insert into public.launch_requests (project_id, task_id, template, brief, dedupe_key, request_hash)
+    values (p_launch->>'project_id', p_launch->>'task_id', p_launch->>'template', p_launch->>'brief', p_launch->>'dedupe_key', p_launch->>'request_hash')
+    on conflict (dedupe_key) do nothing
+    returning id into lid;
+    if lid is not null then
+      return jsonb_build_object('status', 'queued', 'id', lid);
+    end if;
+    -- inserita in parallelo da un'altra richiesta con la stessa chiave
+    select id, request_hash into prev_id, prev_hash from public.launch_requests where dedupe_key = p_launch->>'dedupe_key';
+  end if;
   if prev_hash is distinct from p_launch->>'request_hash' then
     return jsonb_build_object('status', 'action_id_reused', 'id', prev_id);
   end if;
@@ -244,18 +319,69 @@ begin
 end
 $$;
 
--- 9. Permessi: solo il server (service_role) -----------------------------
--- In Supabase i privilegi predefiniti concedono tutto anche ad anon e authenticated:
--- qui si revocano esplicitamente. RLS attiva non basta (non copre ad es. TRUNCATE
--- né l'esecuzione delle funzioni).
+-- 9. L'azione è già stata applicata? (solo lettura) -------------------------
+-- 'applied' | 'action_id_reused' | 'unknown'. Usata dal server quando un ritentativo non si può
+-- più ricalcolare (es. lo stato è cambiato): se era già applicata, la risposta è "duplicate".
+create or replace function public.action_outcome(p_action_id text, p_request_hash text) returns text
+language sql
+stable
+security invoker
+set search_path = public, pg_temp
+as $$
+  select case
+    when a.action_id is null then 'unknown'
+    when a.request_hash = p_request_hash then 'applied'
+    else 'action_id_reused'
+  end
+  from (select 1) as one
+  left join public.applied_actions a on a.action_id = p_action_id
+$$;
+
+-- 10. Cambio di modalità (passaggio, manutenzione, ritorno indietro) ---------
+-- Attende che finiscano le scritture già in corso (tengono un lucchetto condiviso su app_config);
+-- quelle successive vedono la nuova modalità. Eseguibile solo dal proprietario (SQL Editor).
+create or replace function public.set_write_mode(p_legacy_writes text, p_new_writes text) returns jsonb
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  if p_legacy_writes not in ('allow', 'block') or p_new_writes not in ('allow', 'block') then
+    raise exception 'MDS: valori ammessi: allow | block' using errcode = '22023';
+  end if;
+  update public.app_config
+     set legacy_writes = p_legacy_writes, new_writes = p_new_writes, updated_at = now()
+   where id = 1;
+  return jsonb_build_object('legacy_writes', p_legacy_writes, 'new_writes', p_new_writes, 'at', now());
+end
+$$;
+
+-- 11. Permessi minimi -------------------------------------------------------
+-- In Supabase i privilegi predefiniti concedono tutto anche ad anon e authenticated su
+-- tabelle, SEQUENZE e funzioni nuove: qui si revocano esplicitamente. RLS attiva non basta
+-- (non copre TRUNCATE, le sequenze, né l'esecuzione delle funzioni).
 revoke all on table public.app_config, public.app_state_history, public.applied_actions from public, anon, authenticated;
 grant select, insert, update, delete on table public.app_config, public.app_state_history, public.applied_actions to service_role;
 
+-- sequenza dello storico (colonna identity): nessun privilegio diretto a nessun ruolo del browser.
+-- L'inserimento tramite trigger non richiede privilegi sulla sequenza (colonna identity).
+do $$
+declare
+  seq text := pg_get_serial_sequence('public.app_state_history', 'id');
+begin
+  execute format('revoke all on sequence %s from public, anon, authenticated, service_role', seq);
+end
+$$;
+
 revoke all on function public.save_app_state(bigint, jsonb, text, text, jsonb) from public, anon, authenticated;
 revoke all on function public.enqueue_launch(jsonb) from public, anon, authenticated;
+revoke all on function public.action_outcome(text, text) from public, anon, authenticated;
+revoke all on function public.set_write_mode(text, text) from public, anon, authenticated, service_role;
 revoke all on function public.app_state_before_write() from public, anon, authenticated;
 revoke all on function public.app_state_after_update() from public, anon, authenticated;
+revoke all on function public.launch_requests_before_write() from public, anon, authenticated;
 grant execute on function public.save_app_state(bigint, jsonb, text, text, jsonb) to service_role;
 grant execute on function public.enqueue_launch(jsonb) to service_role;
+grant execute on function public.action_outcome(text, text) to service_role;
 
 commit;

@@ -22,6 +22,7 @@ export type MutateOutcome =
   | { status: "saved"; db: DB; version: number; launchIds: number[]; attempts: number }
   | { status: "duplicate"; db: DB; version: number; attempts: number }
   | { status: "action_id_reused"; attempts: number }
+  | { status: "blocked"; attempts: number }
   | { status: "conflict_exhausted"; attempts: number };
 
 export interface RetryOptions {
@@ -43,7 +44,17 @@ export async function mutateWithRetry(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const { db, version } = await store.load();
     const draft = structuredClone(db);
-    const launches = withIdSeed(actionId, () => mutate(draft)) ?? [];
+    let launches: LaunchRow[];
+    try {
+      launches = withIdSeed(actionId, () => mutate(draft)) ?? [];
+    } catch (e) {
+      // l'azione non si può (più) calcolare sullo stato attuale: se era già stata applicata
+      // (ritentativo di un esito incerto) la risposta corretta è "duplicate", non un errore
+      const o = await store.actionOutcome(actionId, hash);
+      if (o === "applied") return { status: "duplicate", db, version, attempts: attempt };
+      if (o === "action_id_reused") return { status: "action_id_reused", attempts: attempt };
+      throw e;
+    }
     const r = await store.save({ expectedVersion: version, data: draft, actionId, requestHash: hash, launches });
     if (r.status === "saved") return { status: "saved", db: draft, version: r.version, launchIds: r.launchIds, attempts: attempt };
     if (r.status === "duplicate") {
@@ -51,6 +62,7 @@ export async function mutateWithRetry(
       return { status: "duplicate", db: cur.db, version: cur.version, attempts: attempt };
     }
     if (r.status === "action_id_reused") return { status: "action_id_reused", attempts: attempt };
+    if (r.status === "blocked") return { status: "blocked", attempts: attempt };
     // conflitto: attesa breve e casuale, poi si rilegge e si ricalcola
     if (attempt < maxAttempts) await sleep(15 * attempt + Math.floor(Math.random() * 40));
   }
@@ -109,7 +121,9 @@ export async function advanceAndSave(store: StateStore, now: number): Promise<DB
   if (!advance(draft, now)) return db;
   const r = await store.save({ expectedVersion: version, data: draft });
   if (r.status === "saved") return draft;
-  // conflitto: un'altra scrittura è arrivata prima; la prossima lettura ricalcolerà
+  // conflitto: un'altra scrittura è arrivata prima; la prossima lettura ricalcolerà.
+  // blocked (manutenzione): sola lettura, si mostra lo stato salvato.
+  if (r.status === "blocked") return db;
   return (await store.load()).db;
 }
 

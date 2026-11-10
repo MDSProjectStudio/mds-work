@@ -27,10 +27,13 @@ export interface SaveRequest {
 export type SaveResult =
   | { status: "saved"; version: number; launchIds: number[] }
   | { status: "duplicate"; version: number }
+  | { status: "blocked"; version: number }
   | { status: "conflict"; version: number }
   | { status: "action_id_reused"; version: number };
 
-export type EnqueueResult = { status: "queued" | "duplicate"; id: number } | { status: "action_id_reused"; id: number };
+export type EnqueueResult = { status: "queued" | "duplicate"; id: number } | { status: "action_id_reused"; id: number } | { status: "blocked" };
+
+export type ActionOutcome = "applied" | "action_id_reused" | "unknown";
 
 export interface StateStore {
   /** true se gli avvii del team sono possibili (serve Supabase e il motore sul PC). */
@@ -38,6 +41,10 @@ export interface StateStore {
   load(): Promise<{ db: DB; version: number }>;
   save(req: SaveRequest): Promise<SaveResult>;
   enqueueLaunch(row: LaunchRow & { request_hash: string }): Promise<EnqueueResult>;
+  /** L'azione con questo identificativo è già stata applicata? (solo lettura) */
+  actionOutcome(actionId: string, requestHash: string): Promise<ActionOutcome>;
+  /** Avvio già in coda con questa chiave? (solo lettura) */
+  findLaunch(dedupeKey: string): Promise<{ id: number; request_hash: string | null } | null>;
 }
 
 /** Converte la risposta JSON delle funzioni SQL nel tipo TypeScript (stessa logica per Supabase e test). */
@@ -48,6 +55,7 @@ export function parseSaveResult(raw: unknown): SaveResult {
     case "saved":
       return { status: "saved", version, launchIds: (r.launch_ids ?? []).map(Number) };
     case "duplicate":
+    case "blocked":
     case "conflict":
     case "action_id_reused":
       return { status: r.status, version };
@@ -59,5 +67,6 @@ export function parseSaveResult(raw: unknown): SaveResult {
 export function parseEnqueueResult(raw: unknown): EnqueueResult {
   const r = (raw ?? {}) as { status?: string; id?: number | string };
   if (r.status === "queued" || r.status === "duplicate" || r.status === "action_id_reused") return { status: r.status, id: Number(r.id) };
+  if (r.status === "blocked") return { status: "blocked" };
   throw new Error(`Risposta di enqueue_launch non riconosciuta: ${String(r.status)}`);
 }
