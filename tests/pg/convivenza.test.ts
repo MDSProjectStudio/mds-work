@@ -35,7 +35,24 @@ describe("migrazione su dati esistenti", () => {
   });
 });
 
-describe("modalità 'allow' (subito dopo la migrazione, codice vecchio ancora attivo)", () => {
+describe("valori iniziali dopo la migrazione: scrive SOLO il codice vecchio", () => {
+  it("il codice vecchio scrive; il codice nuovo (anteprime, prove locali) è rifiutato: nessuna sovrapposizione", async () => {
+    const mode = (await t.admin.query("select legacy_writes, new_writes from app_config where id = 1")).rows[0];
+    expect(mode).toEqual({ legacy_writes: "allow", new_writes: "block" });
+    const v = (await store.load()).version;
+    expect((await applyAction(store, { type: "addInbox", text: "anteprima che prova a scrivere" }, randomUUID(), NOW)).status).toBe("blocked");
+    expect(await store.enqueueLaunch({ project_id: "p_finto", task_id: null, template: null, brief: "x", dedupe_key: `launch:${randomUUID()}`, request_hash: "h".repeat(64) })).toEqual({ status: "blocked" });
+    expect((await store.load()).version).toBe(v);
+    await legacyUpsert(legacy, (await store.load()).db);
+    expect((await store.load()).version).toBe(v + 1);
+  });
+});
+
+describe("SOLO PER LA PROVA: entrambi 'allow' (configurazione NON usata dalla procedura)", () => {
+  it("si imposta a mano per mostrare perché i due percorsi non vanno aperti insieme", async () => {
+    await setWriteMode(t.admin, "allow", "allow");
+  });
+
   it("una scrittura vecchia incrementa comunque la versione e viene segnata come 'legacy'", async () => {
     const v0 = (await store.load()).version;
     const { db } = await store.load();

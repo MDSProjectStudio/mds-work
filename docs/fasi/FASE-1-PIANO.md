@@ -9,7 +9,7 @@
 
 **Obiettivo:** la dashboard non perde dati con scritture contemporanee, è coperta da test automatici, nessun codice arriva in produzione senza controlli, gli errori si vedono e alcune imperfezioni dell'interfaccia sono corrette.
 - **Restano invariati:** identità grafica, funzioni, cassaforte (formato congelato) e dati esistenti.
-- **Nessun servizio a pagamento nuovo.**
+- **Obiettivo: nessun servizio a pagamento nuovo**, nei limiti delle quote del tuo account (stime e condizioni: [rapporto finale](FASE-1-RAPPORTO-FINALE.md) §6).
 
 ---
 

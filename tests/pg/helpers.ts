@@ -54,6 +54,8 @@ export async function freshDb(opts: { migrate?: boolean } = {}): Promise<TestDb>
     await admin.query(UP);
     await admin.query(UP_M3);
     await admin.query(UP_M6);
+    // dopo la migrazione il codice nuovo è BLOCCATO; i test partono dalla situazione "dopo il passaggio"
+    await admin.query("select public.set_write_mode('block', 'allow')");
   }
   const pools: pg.Pool[] = [];
   const clients: pg.Client[] = [];

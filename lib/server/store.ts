@@ -121,9 +121,34 @@ function supabaseStore(): StateStore {
   return store;
 }
 
-/** L'archivio in uso: Supabase se configurato, altrimenti offline. */
+/**
+ * Su Vercel SOLO il deploy di produzione (VERCEL_ENV=production) usa il database configurato.
+ * Anteprime e sviluppo su Vercel non leggono né scrivono dati, a meno che l'ambiente dichiari un
+ * database ISOLATO (MDS_DATABASE_ISOLATO=1, da impostare solo insieme alle chiavi di un progetto di prova).
+ * È una seconda difesa: la prima è non dare alle anteprime le chiavi della produzione.
+ */
+export function previewDbLocked(env: Record<string, string | undefined> = process.env): boolean {
+  return Boolean(env.VERCEL_ENV) && env.VERCEL_ENV !== "production" && env.MDS_DATABASE_ISOLATO !== "1";
+}
+
+export const PREVIEW_LOCK_MESSAGE = "Database non disponibile in anteprima: questo ambiente non ha un database isolato";
+
+/** Archivio che rifiuta ogni accesso (anteprime senza database isolato). */
+export function lockedStore(): StateStore {
+  const no = async (): Promise<never> => {
+    throw new Error(PREVIEW_LOCK_MESSAGE);
+  };
+  return {
+    launches: false,
+    load: no, save: no, enqueueLaunch: no, actionOutcome: no, findLaunch: no,
+    portalSubmit: no, listNewPortalRequests: no, markPortalRequests: no, recordError: no, recentErrors: no,
+  };
+}
+
+/** L'archivio in uso: Supabase se configurato (solo produzione su Vercel), altrimenti offline. */
 export function currentStore(): StateStore {
   if (!cloud()) return offlineStore();
+  if (previewDbLocked()) return lockedStore();
   g.__mdsCloudStore ??= supabaseStore();
   return g.__mdsCloudStore;
 }

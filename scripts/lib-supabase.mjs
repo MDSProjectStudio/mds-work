@@ -14,8 +14,11 @@ const ROOT = path.resolve(HERE, "..");
  * - copia installata degli hook (~/.claude/mds/bin/vN/): runtime.json accanto a questo file indica il percorso
  *   (solo il percorso, mai le chiavi)
  * - repository MDS Work: <repo>/.env.local
+ * - MDS_ENV_FILE (Fase 1, prova isolata): percorso di un ALTRO file di chiavi, per puntare motore e backup a un
+ *   progetto Supabase di PROVA senza toccare .env.local. Ha la precedenza su tutto il resto.
  */
 export function envFilePath() {
+  if (process.env.MDS_ENV_FILE) return path.resolve(process.env.MDS_ENV_FILE);
   try {
     const rt = JSON.parse(fs.readFileSync(path.join(HERE, "runtime.json"), "utf8"));
     if (rt.envFile) return rt.envFile;

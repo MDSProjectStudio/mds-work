@@ -68,7 +68,10 @@ describe("concorrenza reale", () => {
   });
 
   it("il motore che prende un avvio: 6 connessioni contendono la stessa richiesta, una sola la prende", async () => {
-    const id = Number((await t.admin.query<{ id: string }>("insert into launch_requests (project_id, brief, dedupe_key) values ('p_finto', 'brief finto', $1) returning id", [`launch:${randomUUID()}`])).rows[0].id);
+    // la richiesta nasce dal percorso autorizzato (funzione nuova): un INSERT diretto è bloccato dal passaggio
+    const q = await pgStore(t.pool(1)).enqueueLaunch({ project_id: "p_finto", task_id: null, template: null, brief: "brief finto", dedupe_key: `launch:${randomUUID()}`, request_hash: "h".repeat(64) });
+    if (q.status !== "queued") throw new Error("avvio non accodato");
+    const id = q.id;
     const pool = t.pool(6);
     // stessa istruzione che il motore invia con PATCH ?id=eq.X&status=eq.pending
     const claims = await Promise.all(

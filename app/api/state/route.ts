@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     return Response.json(view, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     await reportError(currentStore(), "api/state", e);
-    const msg = e instanceof Error && e.message.startsWith("Database non aggiornato") ? e.message : "Database non raggiungibile";
+    const msg = e instanceof Error && /^Database non (aggiornato|disponibile in anteprima)/.test(e.message) ? e.message : "Database non raggiungibile";
     return Response.json({ error: msg }, { status: 503 });
   }
 }

@@ -165,7 +165,7 @@ La funzione `save_app_state()` fa, in **un'unica transazione**:
 
 | Modalità | `legacy_writes` | `new_writes` | Chi scrive |
 |---|---|---|---|
-| Dopo la migrazione, codice vecchio in produzione | `allow` | `allow` | il vecchio, con versione e storico |
+| Dopo la migrazione, codice vecchio in produzione (**valori iniziali, corretti il 10/11**: prima partiva `allow/allow`) | `allow` | **`block`** | **solo il vecchio**, con versione e storico; il nuovo è rifiutato |
 | **Codice nuovo in produzione** | `block` | `allow` | solo il nuovo |
 | **Manutenzione** | `block` | `block` | **nessuno**: né il codice né il motore |
 | **Dopo il ritorno indietro** | `allow` | `block` | solo il vecchio; istanze nuove rimaste rifiutate |
@@ -185,18 +185,7 @@ La funzione `save_app_state()` fa, in **un'unica transazione**:
 | Approvazione nuova e "Lavora con il team" in `block` | avvii creati regolarmente |
 | Motore in `block` | prende la richiesta (UPDATE condizionato) |
 
-**Procedura di passaggio proposta** (ogni passo richiederà il tuo consenso al momento):
-1. `npm run backup` + `npm run backup:verifica -- --app`.
-2. Applicare la migrazione (`allow`/`allow`). Il codice vecchio continua a funzionare, la versione sale, lo storico si riempie.
-3. Verificare la dashboard attuale.
-4. Chiudere **tutte** le schede della dashboard, su ogni dispositivo, e attivare il blocco del vecchio:
-   ```sql
-   select public.set_write_mode('block', 'allow');
-   ```
-   Il cambio attende le scritture in corso. Da qui il codice vecchio non può più scrivere né accodare avvii, compresi i deploy vecchi raggiungibili dal loro indirizzo Vercel. Fino al deploy (passo 5) le scritture falliscono con un errore visibile: **nessuna perdita silenziosa**.
-5. Deploy del codice nuovo (merge su `main`).
-6. Aggiornare il motore sul PC al codice nuovo (`git pull` del ramo approvato) e riavviarlo.
-7. Verifica: azioni, incassi, approvazioni, portale, avvii.
+**Procedura di passaggio: sostituita il 10/11.** La versione precedente passava direttamente da `allow/allow` a `block/allow` prima del deploy, con il codice nuovo già abilitato dalla migrazione. La procedura valida, con isolamento delle anteprime Vercel, condizione delle prove isolate, manutenzione e controlli a ogni passo, è nel [rapporto finale](FASE-1-RAPPORTO-FINALE.md) §6.0, §6.4 e §6.5. In sintesi: migrazioni (`allow/block`) → manutenzione (`block/block`) → deploy del codice nuovo → apertura al solo nuovo (`block/allow`). I due percorsi di scrittura non sono mai aperti insieme.
 
 ---
 

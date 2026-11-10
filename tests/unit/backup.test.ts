@@ -75,3 +75,22 @@ describe("backup pianificato: rotazione", async () => {
     }
   });
 });
+
+describe("MDS_ENV_FILE: file di chiavi alternativo per la prova isolata", async () => {
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { envFilePath } = await import("../../scripts/lib-supabase.mjs");
+
+  it("con MDS_ENV_FILE motore e backup leggono quel file; senza, il comportamento di sempre", () => {
+    const prima = process.env.MDS_ENV_FILE;
+    try {
+      delete process.env.MDS_ENV_FILE;
+      expect(envFilePath()).not.toContain("prova-isolata");
+      process.env.MDS_ENV_FILE = path.join(os.tmpdir(), "prova-isolata.env");
+      expect(envFilePath()).toBe(path.join(os.tmpdir(), "prova-isolata.env"));
+    } finally {
+      if (prima === undefined) delete process.env.MDS_ENV_FILE;
+      else process.env.MDS_ENV_FILE = prima;
+    }
+  });
+});

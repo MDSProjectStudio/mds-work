@@ -51,7 +51,7 @@ export async function POST(req: Request) {
   } catch (e) {
     await reportError(currentStore(), "api/action", e, { azione: action.type });
     const msg = e instanceof Error ? e.message : "";
-    if (msg.startsWith("Database non aggiornato")) return Response.json({ error: msg }, { status: 503 });
+    if (/^Database non (aggiornato|disponibile in anteprima)/.test(msg)) return Response.json({ error: msg }, { status: 503 });
     // errore del database o di rete: il browser può ritentare con lo stesso actionId senza rischio di doppioni
     if (msg.startsWith("Supabase:") || /fetch failed|ECONN|timeout/i.test(msg)) return Response.json({ error: "Database non raggiungibile" }, { status: 503 });
     return Response.json({ error: "Azione non applicabile" }, { status: 400 });

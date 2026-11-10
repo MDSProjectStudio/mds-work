@@ -99,9 +99,9 @@ Totale: 56 file, +1.858 / −186 righe.
 |---|---|
 | TypeScript | 0 errori |
 | ESLint (`--max-warnings 0`) | **0 errori, 0 avvisi** (erano 16) |
-| Test unitari | **68/68** (10 file) |
-| PostgreSQL embedded 17.10 (Windows, solo 127.0.0.1) | **84/84** (8 file) |
-| PostgreSQL "stile CI" (server esterno locale indicato da variabili, come il contenitore Linux) | **84/84** |
+| Test unitari | **72/72** (11 file; dopo la revisione di rilascio, vedi §8) |
+| PostgreSQL embedded 17.10 (Windows, solo 127.0.0.1) | **86/86** (8 file; dopo la revisione di rilascio) |
+| PostgreSQL "stile CI" (server esterno locale indicato da variabili, come il contenitore Linux) | 84/84 prima della revisione di rilascio; **non rieseguita** dopo (cambia solo il valore iniziale di un interruttore e un test) |
 | Test nel browser (build di produzione offline, Edge del PC, dati finti in cartella temporanea) | **10/10**: 7 flussi + accessibilità a 375 / 768 / 1440 px |
 | Accessibilità (axe, WCAG 2.1 A/AA) su 10 schermate + portale | **0 violazioni** escluso il contrasto (vedi §5) |
 | Eval del kit | 60/60 · 23/23 · 71/71 · 16/16 |
@@ -121,7 +121,8 @@ Nessuna nella verifica finale.
 | Prova | Motivo | Cosa serve |
 |---|---|---|
 | CI su GitHub (Linux e Windows) | serve il push del ramo, non autorizzato | approvazione §6.1 |
-| Prove con PostgREST / supabase-js **reali** (RPC, permessi via API) | servirebbe un progetto Supabase di prova, non autorizzato | approvazione §6.4 |
+| Prove con PostgREST / supabase-js **reali** (RPC, permessi via API) e **login online** | servirebbe un progetto Supabase di prova, non autorizzato. **Condizione bloccante** prima del rilascio | prove A–I del §6.4 |
+| Impostazioni reali di Vercel (ambiente delle variabili, protezione delle anteprime) | nessun accesso al progetto Vercel | conferma tua, §6.0 |
 | Versione PostgreSQL e permessi **reali** della produzione | lettura della produzione non autorizzata in questa fase | approvazione §6.3 (sola lettura) |
 | Backup reale `--pianificato` e attività pianificata | collegamento alla produzione e attivazione non autorizzati | approvazione §6.7 |
 | Applicazione delle migrazioni in produzione | non autorizzata | approvazione §6.5 |
@@ -162,14 +163,40 @@ Nessuna nella verifica finale.
 
 ## 6. Operazioni esterne da approvare (una per una)
 
-Costi: **0 €** con il repository pubblico com'è oggi. Su repository pubblici i minuti GitHub Actions sono gratuiti, anche Windows. Se un giorno diventasse privato: piano Free = 2.000 minuti/mese, con Windows conteggiato ×2; una CI completa vale circa 10–15 minuti Linux + 5–8 Windows. Nessun costo Supabase o Vercel aggiuntivo: le tabelle nuove sono piccole.
+### Costi: stime subordinate alle quote del tuo account
 
-**6.1 — Pubblicare il ramo su GitHub**
+**Nessun importo è garantito.** Le cifre sotto vengono dalle pagine prezzi ufficiali consultate il 10/11/2026 (pagine che dichiarano "i prezzi possono cambiare") e valgono solo se il tuo account è dentro le quote. Non conosco il tuo piano attuale né il consumo reale, e non ho potuto leggerli: **prima di approvare ogni voce controlla il piano e il consumo nelle pagine di fatturazione**.
+
+| Voce | Stima | Condizione da verificare prima |
+|---|---|---|
+| **GitHub Actions** (CI) | repository **pubblico**: runner standard gratuiti. Repository **privato**, piano Free: credito incluso di **12 $/mese**; tariffe Linux 0,006 $/min e Windows 0,010 $/min. Una CI completa vale circa 10–15 min Linux + 5–8 min Windows (**mia stima**, da misurare alla prima esecuzione), cioè circa 0,11–0,17 $ a esecuzione. Il credito copre grosso modo 70–110 esecuzioni al mese | repository ancora pubblico; oltre il credito, o con più esecuzioni, si paga a consumo |
+| **Progetto Supabase di prova** (§6.4) | 0 € **solo se** hai uno dei 2 posti gratuiti liberi: il piano Free ammette **2 progetti attivi**, 500 MB di database ciascuno, e li **mette in pausa dopo 1 settimana senza attività**. Se i 2 posti sono già occupati (ad esempio produzione + un altro progetto), serve il piano Pro: **da 25 $/mese**, oppure eliminare/mettere in pausa un altro progetto | quanti progetti attivi hai oggi e su quale piano è la produzione |
+| **Supabase produzione** | le tabelle nuove sono piccole (stima: qualche MB), ma il consumo reale non è misurato | spazio usato oggi rispetto ai 500 MB del Free (se la produzione è sul Free) |
+| **Vercel: anteprime** | il piano Hobby include deploy illimitati, 1 M di chiamate/mese e 100 GB di banda; Pro **20 $/mese per ogni persona**. Ogni push di un ramo crea un'anteprima | piano attuale. **Attenzione:** la pagina ufficiale dice che Hobby è "per uso personale e non commerciale": verifica che il tuo uso rientri, altrimenti il costo non sarebbe 0 € |
+| Questa procedura | non richiede altri servizi a pagamento | — |
+
+Il totale dipende quindi da tre fatti che solo tu puoi controllare: il piano Vercel, i progetti Supabase attivi e la visibilità del repository. Se uno di questi cambia, i costi cambiano.
+
+**6.0 — Isolare le anteprime Vercel dal database di produzione (PRIMA di ogni push)**
+
+*Il rischio.* Ogni push di un ramo crea un'anteprima Vercel. Se le variabili d'ambiente con le chiavi di produzione (`SUPABASE_SECRET_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`) valgono anche per le anteprime, l'anteprima si collega al **database reale**. Dopo la migrazione il percorso "nuovo" parte bloccato (vedi §6.5), ma un'anteprima con codice **vecchio** (un ramo nato da `main` prima di questa Fase) potrebbe comunque scrivere. Per questo la difesa non può essere una sola.
+
+*Difese, in ordine di importanza:*
+1. **Impostazione Vercel (la prima difesa, da fare tu):** Project → Settings → Environment Variables. Le tre variabili devono valere **solo per "Production"**. Togli le spunte "Preview" e "Development". Controlla anche le eventuali variabili specifiche per ramo. Annota prima i valori e gli ambienti attuali, così il ritorno indietro è esatto. Senza chiavi, un'anteprima parte in modalità "offline": rifiuta ogni richiesta che non arrivi da `localhost` (403) e non si collega a nessun database. Le variabili `NEXT_PUBLIC_*` vengono incorporate alla costruzione: vale per le **nuove** anteprime, quindi dopo il cambio si rigenerano.
+2. **Blocco nel codice (seconda difesa, già fatta e provata in locale):** fuori da `VERCEL_ENV=production` il codice nuovo **non apre mai** l'archivio dati: ogni lettura e scrittura risponde "Database non disponibile in anteprima". Si riapre solo dichiarando un database isolato (`MDS_DATABASE_ISOLATO=1`), da impostare **solo** insieme alle chiavi del progetto di prova e **solo** per "Preview".
+3. **Blocco nel database (terza difesa, dopo il passaggio):** con `legacy_writes = 'block'` anche un'anteprima con codice vecchio non può più scrivere.
+4. **(se disponibile nel tuo piano)** Protezione dei deployment di Vercel sulle anteprime, così solo tu puoi aprirle.
+
+*Controllo prima del push (senza effetti):* dalla pagina delle variabili, verificare che Preview e Development siano vuoti per le tre chiavi. Dopo il push, nei log delle API del progetto Supabase di **produzione** non devono comparire richieste dall'anteprima.
+
+*Limite da conoscere:* il blocco nel codice vale solo per il codice nuovo; la protezione dalle anteprime vecchie è la difesa 1 (e la 3, a passaggio avvenuto). **Non ho potuto verificare** le impostazioni attuali di Vercel (nessun accesso al progetto): è un'operazione tua, da confermare per iscritto prima del §6.1.
+
+**6.1 — Pubblicare il ramo su GitHub** (solo dopo il §6.0)
 ```bash
 git push -u origin fase-1/m2-concorrenza
 ```
 Effetti:
-- crea un'**anteprima Vercel**, che non funzionerà finché il database non ha le migrazioni: mostrerà "Database non aggiornato" senza scrivere nulla;
+- crea un'**anteprima Vercel** senza chiavi di produzione (§6.0): non si collega a nessun database e mostra solo la modalità offline o "Database non disponibile in anteprima";
 - avvia la **CI**.
 
 **6.2 — Verificare la CI su GitHub:** entrambi i job (Linux e Windows) verdi. Solo lettura.
@@ -182,21 +209,54 @@ select table_name, grantee, privilege_type from information_schema.role_table_gr
 select c.relname, c.relacl from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'S';
 ```
 
-**6.4 — (facoltativo, consigliato) Progetto Supabase di PROVA** (piano gratuito) per provare migrazioni, RPC e permessi attraverso l'API reale, con dati finti. Richiede la creazione di un progetto: non autorizzata.
+**6.4 — CONDIZIONE BLOCCANTE: prove delle API Supabase e del login in un ambiente ISOLATO**
 
-**6.5 — Migrazioni in produzione e passaggio al codice nuovo** (procedura completa in [FASE-1-M2.md](FASE-1-M2.md) §4):
-1. backup + verifica;
-2. SQL Editor, in ordine:
-   - [20261110_m2_concorrenza.sql](../../supabase/migrations/20261110_m2_concorrenza.sql);
-   - [20261111_m3_portale.sql](../../supabase/migrations/20261111_m3_portale.sql);
-   - [20261112_m6_errori.sql](../../supabase/migrations/20261112_m6_errori.sql);
-3. verificare che la dashboard **attuale** funzioni ancora;
-4. chiudere **tutte** le schede e fermare il motore, poi `select public.set_write_mode('block', 'allow');`;
-5. merge su `main`, cioè il deploy;
-6. aggiornare e riavviare il motore sul PC;
-7. verifica completa.
+**Senza il risultato positivo di tutte le prove qui sotto, il §6.5 non si esegue.** Finora la logica è provata su PostgreSQL con connessioni dirette: **non** attraverso l'API reale di Supabase (PostgREST, `supabase-js`, ruoli e chiavi) né con il vero login. È la parte che può nascondere differenze (conversione dei tipi, funzioni esposte o no, permessi predefiniti, cookie di sessione).
 
-Rollback: [FASE-1-M2.md](FASE-1-M2.md) §7 (manutenzione → codice precedente → riapertura controllata), poi le migrazioni inverse in ordine inverso: M6 → M3 (prima importare le richieste `new`) → M2.
+*Ambiente.* Un progetto Supabase **di prova**, nuovo, con dati finti, separato dalla produzione, con un indirizzo email di prova come proprietario (`MDS_OWNER_EMAIL`). Richiede la creazione di un progetto e le sue chiavi: **non autorizzata e non eseguita** (costi e posti disponibili: vedi la tabella dei costi). In alternativa, uno stack Supabase locale con Docker: Docker oggi **non è installato** sul PC. Il file di chiavi del progetto di prova va in un file **separato**, indicato con `MDS_ENV_FILE` (aggiunto per questo scopo: motore e backup lo leggono al posto di `.env.local`, che non si tocca).
+
+*Per l'anteprima isolata:* chiavi del progetto di prova + `MDS_DATABASE_ISOLATO=1`, solo nell'ambiente "Preview" (§6.0). Mai le chiavi di produzione.
+
+*Prove (tutte da superare e registrare con data ed esito; ciò che non si esegue resta "NON PROVATO"):*
+
+| # | Prova | Criterio di superamento |
+|---|---|---|
+| A | **Migrazioni** applicate nell'ordine M2 → M3 → M6 su un database che contiene già dati scritti dal codice **vecchio** | dati identici; `app_config` = `legacy_writes allow` e `new_writes block`; riapplicazione senza errori; script inversi provati |
+| B | **API con la chiave segreta** (come il server, via `supabase-js`): `save_app_state` (esiti `saved`, `duplicate`, `conflict`, `action_id_reused`, `blocked`), `enqueue_launch`, `portal_submit` (con i parametri predefiniti), `record_error_event`, `action_outcome`, lettura di `data, version`, aggiornamenti condizionati del motore | ogni esito identico a quello visto su PostgreSQL; tipi corretti (il numero di versione resta un numero) |
+| C | **Permessi con la chiave pubblica e con un utente loggato non proprietario:** ogni tabella (lettura, scrittura, cancellazione), ogni funzione, ogni sequenza, comprese le tabelle **preesistenti** | tutto negato; l'elenco dei privilegi trovati alimenta il §6.8 |
+| D | **Login (Supabase Auth)** con due utenti di prova: il proprietario e un altro | proprietario: `/api/me` ok e dashboard utilizzabile. Altro utente: "non autorizzato". Senza sessione: 401 su `/api/state`, `/api/action`, `/api/launch`. Uscita dalla sessione funzionante, sull'indirizzo dell'**anteprima** |
+| E | **Flussi nel browser con il login** (gli stessi dei test locali): incasso e doppio clic, esito incerto con "Riprova", approvazione con avvio, portale pubblico (senza login: invia sì, legge lo stato no, 6ª richiesta limitata) | tutti superati; nessun errore in console |
+| F | **Codice VECCHIO (build di `main`) sul database migrato**, con l'API reale: in `allow/block` scrive come oggi; in `block/block` e `block/allow` le sue scritture e i suoi avvii vengono **rifiutati** con un errore visibile | rifiuto confermato attraverso PostgREST (non solo su PostgreSQL) |
+| G | **Prova generale del passaggio completo** (§6.5, tutti i passi, con tempi) **e del rollback** (M2 §7) sul progetto di prova | nessun istante con entrambi i percorsi aperti, verificato leggendo `app_config` a ogni passo; durata della manutenzione misurata |
+| H | **Motore e backup** puntati al progetto di prova con `MDS_ENV_FILE`: presa condizionata, `npm run backup`, `backup:verifica -- --app`, `--pianificato` con le tabelle nuove | backup verificato, tabelle nuove incluse |
+| I | **Anteprima senza isolamento:** dopo il push, un'anteprima priva di `MDS_DATABASE_ISOLATO` | mostra "Database non disponibile in anteprima"; **zero richieste** nei log API della produzione |
+
+*Cosa resta fuori dalla prova isolata:* la versione reale di PostgreSQL e i permessi reali della produzione (§6.3), e le impostazioni reali di Vercel (§6.0).
+
+**6.5 — Migrazioni in produzione e passaggio al codice nuovo** (solo dopo §6.0 e §6.4 superati)
+
+*Principio: i due percorsi di scrittura non sono mai aperti insieme.* La migrazione parte con il codice **nuovo bloccato** (`new_writes = 'block'`, corretto in questa revisione: prima partiva `allow/allow`). Il passaggio avviene **sempre** attraverso la manutenzione (`block/block`):
+
+| Fase | `legacy_writes` | `new_writes` | Chi scrive |
+|---|---|---|---|
+| Oggi | (non esiste) | (non esiste) | solo il codice vecchio, senza controlli |
+| Dopo le migrazioni | `allow` | **`block`** | **solo il vecchio**, con versione e storico. Il nuovo (anteprime, prove locali, un `npm run dev` con le chiavi reali) è rifiutato |
+| **Manutenzione** | `block` | `block` | **nessuno**, motore compreso |
+| Dopo il passaggio | `block` | `allow` | **solo il nuovo**; vecchio rifiutato (anche deploy e anteprime vecchie raggiungibili) |
+
+Passi (ognuno con il tuo consenso al momento):
+1. **Prerequisiti:** §6.0 e §6.4 superati e annotati; backup + verifica (`npm run backup`, `npm run backup:verifica -- --app`). Nessuno usa `npm run dev` con le chiavi reali.
+2. **Migrazioni**, SQL Editor, in ordine: [20261110_m2_concorrenza.sql](../../supabase/migrations/20261110_m2_concorrenza.sql), [20261111_m3_portale.sql](../../supabase/migrations/20261111_m3_portale.sql), [20261112_m6_errori.sql](../../supabase/migrations/20261112_m6_errori.sql).
+3. **Controllo dello stato:** `select legacy_writes, new_writes from public.app_config;` deve dare `allow | block`. Se `new_writes` non è `block`, **ci si ferma**. Verificare che la dashboard attuale funzioni e che la versione salga.
+4. **Manutenzione:** chiudere tutte le schede su ogni dispositivo, fermare il motore su ogni PC, poi `select public.set_write_mode('block', 'block');`. La funzione attende le scritture in corso. Verificare `block | block`.
+5. **Cambio di codice:** merge su `main`. Attendere che il deploy di produzione sia **"Ready"** e attivo. Durante questo passo nessuno scrive (manutenzione), quindi l'ordine fra istanze vecchie e nuove non conta.
+6. **Apertura al solo codice nuovo:** `select public.set_write_mode('block', 'allow');`. Verificare `block | allow`. Da qui il vecchio codice è rifiutato anche da deploy e anteprime precedenti.
+7. **Motore:** aggiornare il codice sul PC e riavviarlo.
+8. **Verifica completa:** azioni, incassi, approvazioni, portale, avvii, backup. Nei log API di Supabase non devono comparire scritture da anteprime.
+
+Se un controllo dei passi 3, 4 o 6 non dà il valore atteso: **non si prosegue**, si resta in manutenzione e si valuta il rollback.
+
+Rollback: [FASE-1-M2.md](FASE-1-M2.md) §7 (manutenzione → codice precedente → riapertura controllata solo al vecchio: `block/allow` diventa `allow/block`), poi le migrazioni inverse in ordine inverso: M6 → M3 (prima importare le richieste `new`) → M2. Le impostazioni di Vercel del §6.0 **restano come sono**: sono sicure anche con il codice vecchio. Le annotazioni servono solo se vuoi ripristinarle.
 
 **6.6 — Impostazioni GitHub (protezione di `main`)**, da Settings → Branches → regola per `main`:
 - richiedere una pull request prima del merge;
@@ -227,3 +287,27 @@ Il comando qui sopra mostra soltanto l'attività. Per crearla, aggiungi `-Attiva
 - **Codice:** non unire il ramo, oppure, dopo un merge futuro, `git revert` dei commit elencati al §1. Le dipendenze aggiunte sono solo di sviluppo.
 - **Database:** nulla è stato applicato. I file `.down.sql` sono pronti e provati in locale (M2, M3, M6). Non cancellano dati; la pulizia definitiva è commentata.
 - **PC:** nessuna attività pianificata, nessun servizio, nessuna impostazione di Windows modificata. `.data` intatta.
+
+---
+
+## 8. Correzioni dopo la revisione della procedura di rilascio (10/11/2026)
+
+Richieste: anteprime Vercel, prove isolate come condizione, costi come stime. Solo la procedura e le modifiche minime al codice che la rendono vera.
+
+| Punto | Problema | Correzione |
+|---|---|---|
+| 1 | **La migrazione apriva entrambi i percorsi** (`new_writes` partiva `allow`): subito dopo l'applicazione il codice nuovo, in un'anteprima o in locale con le chiavi reali, poteva scrivere sul database di produzione mentre il codice vecchio era ancora attivo | `new_writes` ora parte **`block`**. Dopo le migrazioni scrive solo il vecchio. Il passaggio avviene sempre per la manutenzione (§6.5, con un controllo del valore a ogni passo e fermata se non è quello atteso) |
+| 1 | **Le anteprime potevano collegarsi al database reale** se le chiavi valevano anche per "Preview" | difesa 1 (impostazione Vercel, §6.0); difesa 2 **nel codice**: fuori da `VERCEL_ENV=production` l'archivio dati non si apre senza `MDS_DATABASE_ISOLATO=1`; difesa 3 nel database, a passaggio avvenuto |
+| 2 | Le prove con API reale e login erano "facoltative" | ora **condizione bloccante** del rilascio (§6.4): 9 prove A–I con criteri di superamento. Per puntare motore e backup a un progetto di prova senza toccare `.env.local` è stata aggiunta la variabile `MDS_ENV_FILE` |
+| 3 | "0 €" garantito, e una cifra sbagliata sui minuti di GitHub Actions ("2.000 minuti, Windows ×2": la pagina ufficiale indica un credito di 12 $ e tariffe al minuto) | costi riscritti come **stime subordinate** a piano, consumo e quote, con fonte e data (§6) |
+
+**Verifiche mirate eseguite** (nessuna ripetizione generale):
+- PostgreSQL: **86/86**. Nuovi o modificati: valori iniziali `allow/block` con il nuovo rifiutato e il vecchio no; il blocco rimane la base dei test di passaggio; un test del motore ora crea la richiesta dal percorso autorizzato, perché l'INSERT diretto è giustamente rifiutato.
+- Unitari: **72/72** (3 nuovi sul blocco delle anteprime, 1 su `MDS_ENV_FILE`).
+- Tipi e ESLint a zero avvisi sui file toccati.
+- **Non rieseguiti**, perché non toccati: test nel browser, eval del kit, percorso "stile CI".
+
+**Impedimenti e limiti dichiarati:**
+- Le impostazioni **reali** di Vercel (ambiente delle variabili) e i piani/quote del tuo account **non sono verificabili da qui**: la difesa 1 e il controllo dei costi restano operazioni tue.
+- Il blocco nel codice protegge solo il codice **nuovo**. Un'anteprima con codice vecchio ha, come difesa, soltanto l'assenza delle chiavi (§6.0, punto 1) e, a passaggio avvenuto, il blocco del database.
+- Il progetto di prova (§6.4) non esiste: tutte le prove A–I sono **NON PROVATE** e il rilascio è subordinato a esse.

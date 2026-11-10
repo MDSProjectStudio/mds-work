@@ -14,6 +14,9 @@
 --                                          (app_state e nuovi avvii in launch_requests)
 --        new_writes    ('allow'|'block'): scritture del codice NUOVO (funzioni)
 --      Entrambi 'block' = MANUTENZIONE: nessuno scrive, il motore non prende richieste.
+--      VALORI INIZIALI: legacy_writes='allow', new_writes='block'. Subito dopo la migrazione scrive
+--      SOLO il codice in produzione (vecchio); il codice nuovo (anteprime, prove locali) NON può scrivere.
+--      I due percorsi non sono mai aperti insieme: il passaggio avviene con la manutenzione (entrambi 'block').
 --      Cambio con set_write_mode(): attende che finiscano le scritture in corso.
 --   3. applied_actions: registro delle azioni applicate (una volta sola).
 --   4. launch_requests: `dedupe_key` unica e `request_hash`; trigger di blocco.
@@ -40,7 +43,8 @@ create table if not exists public.app_config (
   legacy_writes text not null default 'allow' check (legacy_writes in ('allow', 'block')),
   updated_at timestamptz not null default now()
 );
-alter table public.app_config add column if not exists new_writes text not null default 'allow';
+-- codice nuovo BLOCCATO finché il titolare non esegue il passaggio (set_write_mode)
+alter table public.app_config add column if not exists new_writes text not null default 'block';
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'app_config_new_writes_check') then
