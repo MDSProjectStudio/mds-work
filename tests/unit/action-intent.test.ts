@@ -136,3 +136,23 @@ describe("esito incerto, rifiuto definitivo e conferma", () => {
     expect(tracker.begin(pay).actionId).not.toBe(a.actionId);
   });
 });
+
+describe("elenco degli esiti incerti (avviso persistente nella dashboard)", () => {
+  it("resta finché un invio non lo risolve; avvisa a ogni cambiamento; non si svuota col tempo (entro 7 giorni)", () => {
+    const { tracker, advance } = setup();
+    let changes = 0;
+    const off = tracker.subscribe(() => changes++);
+    const a = tracker.begin(pay);
+    tracker.end(pay, a.actionId, "uncertain");
+    expect(tracker.uncertain().map((u) => u.op)).toEqual([pay]);
+    const snap = tracker.uncertain();
+    advance(60 * 60_000);
+    expect(tracker.uncertain()).toBe(snap); // stesso array: l'aggiornamento della pagina non lo cambia
+    const b = tracker.begin(pay); // "Riprova"
+    expect(tracker.uncertain()).toEqual([]); // in corso: non in attesa
+    tracker.end(pay, b.actionId, "confirmed");
+    expect(tracker.uncertain()).toEqual([]);
+    expect(changes).toBeGreaterThanOrEqual(2);
+    off();
+  });
+});

@@ -46,11 +46,22 @@ export interface IntentPersistence {
   save(data: Record<string, { id: string; at: number }>): void;
 }
 
+/** Operazione con esito ancora incerto (da mostrare finché non viene risolta). */
+export interface UncertainOp {
+  key: string;
+  op: unknown;
+  since: number;
+}
+
 export interface IntentTracker {
   /** Identificativo da usare per questa operazione; `repeated` = riuso; `uncertain` = riprende un esito incerto. */
   begin(op: unknown): { actionId: string; repeated: boolean; uncertain: boolean };
   /** Da chiamare a fine invio con l'esito. */
   end(op: unknown, actionId: string, outcome: SendOutcome): void;
+  /** Operazioni con esito incerto, NON in corso (array stabile finché non cambia: adatto a useSyncExternalStore). */
+  uncertain(): readonly UncertainOp[];
+  /** Avvisa a ogni cambiamento dell'elenco degli esiti incerti. */
+  subscribe(cb: () => void): () => void;
 }
 
 export function createIntentTracker(
@@ -71,7 +82,29 @@ export function createIntentTracker(
     // memoria del browser non disponibile: si continua senza
   }
 
+  const listeners = new Set<() => void>();
+  let snapshot: readonly UncertainOp[] = [];
+  const recompute = () => {
+    const next: UncertainOp[] = [];
+    for (const [k, e] of entries) {
+      if (e.uncertainAt === null || e.pending > 0) continue;
+      let op: unknown = null;
+      try {
+        op = JSON.parse(k);
+      } catch {
+        continue;
+      }
+      next.push({ key: k, op, since: e.uncertainAt });
+    }
+    const same = next.length === snapshot.length && next.every((x, i) => x.key === snapshot[i].key && x.since === snapshot[i].since);
+    if (!same) {
+      snapshot = next;
+      listeners.forEach((l) => l());
+    }
+  };
+
   const persist = () => {
+    recompute();
     if (!opts.persistence) return;
     const out: Record<string, { id: string; at: number }> = {};
     for (const [k, e] of entries) if (e.uncertainAt !== null) out[k] = { id: e.id, at: e.uncertainAt };
@@ -95,6 +128,7 @@ export function createIntentTracker(
     }
     if (changed) persist();
   };
+  recompute();
 
   return {
     begin(op) {
@@ -104,10 +138,16 @@ export function createIntentTracker(
       const e = entries.get(key);
       if (e && (e.pending > 0 || e.uncertainAt !== null || (e.settledAt !== null && t - e.settledAt < windowMs))) {
         e.pending++;
+        if (e.uncertainAt !== null) recompute(); // in corso: non più "in attesa di risoluzione" finché non finisce
         return { actionId: e.id, repeated: true, uncertain: e.uncertainAt !== null };
       }
       entries.set(key, { id: newId(), pending: 1, settledAt: null, uncertainAt: null });
       return { actionId: entries.get(key)!.id, repeated: false, uncertain: false };
+    },
+    uncertain: () => snapshot,
+    subscribe(cb) {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
     },
     end(op, actionId, outcome) {
       const key = stableStringify(op);

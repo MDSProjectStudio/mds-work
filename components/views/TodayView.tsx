@@ -5,14 +5,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { ArrowUpRight, Bot, Handshake, Check, CircleDollarSign, FolderKanban, Inbox, ListTodo, ShieldCheck, Wallet } from "lucide-react";
 import { useDB } from "@/lib/client";
-import { focusItems, fmtDate, fmtMoney, greeting, money, pendingApprovals, projectById, daysTo } from "@/lib/selectors";
+import { focusItems, fmtDate, fmtMoney, greeting, money, pendingApprovals, projectById, daysTo, signalState } from "@/lib/selectors";
 import { ApprovalCard } from "../ApprovalCard";
 import { LogFeed } from "../LogFeed";
 import { ProjectCard } from "../ProjectCard";
-import { Card, Empty, Loading, PageHeader, ProjectDot, SectionTitle, Stat } from "../ui";
+import { Card, Empty, Loading, PageHeader, ProjectDot, SectionTitle, SignalBadge, Stat } from "../ui";
 
 export function TodayView() {
-  const { db, dispatch } = useDB();
+  const { db, dispatch, now } = useDB();
   const [capture, setCapture] = useState("");
   if (!db) return <Loading />;
 
@@ -161,7 +161,7 @@ export function TodayView() {
           </Card>
 
           <Card className="p-4 sm:p-5">
-            <SectionTitle kicker="attività" title="Cosa sta succedendo" right={<span className="flex items-center gap-1.5 text-xs text-lime"><span className="led led-pulse" style={{ width: 6, height: 6 }} />live</span>} />
+            <SectionTitle kicker="attività" title="Cosa sta succedendo" right={<SignalBadge state={signalState(db, now)} />} />
             <div className="mt-4 max-h-[460px] overflow-y-auto pr-1">
               <LogFeed logs={db.logs} showProject max={16} />
             </div>

@@ -8,7 +8,7 @@ import clsx from "clsx";
 import { ArrowLeft, Check, Copy, ExternalLink, FolderOpen, GitBranch, Inbox, KeyRound, LayoutGrid, ListTodo, MessageSquare, CirclePause, Settings2, Sparkles, Trash, Wallet } from "lucide-react";
 import { useDB } from "@/lib/client";
 import { KIND_LABEL, ROLES } from "@/lib/skills";
-import { fmtDate, fmtRel, pendingApprovals, progressOf } from "@/lib/selectors";
+import { fmtDate, fmtRel, pendingApprovals, progressOf, signalState } from "@/lib/selectors";
 import type { ProjectStatus } from "@/lib/types";
 import { AgentDrawer, Office } from "../Office";
 import { LiveActivity } from "../LiveActivity";
@@ -22,7 +22,7 @@ import { ProjectSettings } from "../ProjectSettings";
 import { MessagesPanel } from "../MessagesPanel";
 import { BriefButton } from "../BriefButton";
 import { LaunchButton } from "../LaunchButton";
-import { Card, Empty, Loading, Progress, SectionTitle, StatusBadge } from "../ui";
+import { Card, Empty, Loading, Progress, SectionTitle, SignalBadge, StatusBadge } from "../ui";
 
 const TABS = [
   { key: "room", label: "Stanza", icon: LayoutGrid },
@@ -159,7 +159,7 @@ export function ProjectView({ id }: { id: string }) {
               <LiveActivity project={p} onSelect={setAgent} />
               <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
                 <Card className="p-4">
-                  <SectionTitle kicker="terminale" title="Log della stanza" right={<span className="flex items-center gap-1.5 text-xs text-lime"><span className="led led-pulse" style={{ width: 6, height: 6 }} /> live</span>} />
+                  <SectionTitle kicker="terminale" title="Log della stanza" right={<SignalBadge state={signalState(db, now, p.id)} />} />
                   <div className="mt-3 max-h-[300px] overflow-y-auto rounded-xl border border-line bg-[#03060d] p-3">
                     <LogFeed logs={db.logs.filter((l) => l.projectId === p.id)} terminal max={40} />
                   </div>

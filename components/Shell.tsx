@@ -5,12 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
-import { Bell, FileText, FolderKanban, Handshake, Inbox, KeyRound, Library, LogOut, Menu, Plus, Search, ShieldCheck, Sun, Wallet, X } from "lucide-react";
+import { Bell, FileText, FolderKanban, Handshake, Inbox, KeyRound, Library, LogOut, Menu, Plus, RotateCcw, Search, ShieldCheck, Sun, TriangleAlert, Wallet, X } from "lucide-react";
+import { actionLabel } from "@/lib/action-labels";
 import { authEnabled } from "@/lib/supabase/config";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { useDB } from "@/lib/client";
-import { money, pendingApprovals } from "@/lib/selectors";
-import { ProjectDot } from "./ui";
+import { agentsMode, money, pendingApprovals, signalState, type AgentsMode } from "@/lib/selectors";
+import { ProjectDot, SignalBadge } from "./ui";
 import { Sprite } from "./Sprite";
 import { CommandPalette } from "./CommandPalette";
 import { NewProjectModal } from "./NewProjectModal";
@@ -58,6 +59,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </AnimatePresence>
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar onMenu={() => setMobileNav(true)} />
+          <ActionNotices />
           <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-24 pt-2 sm:px-6 lg:px-8">{children}</main>
         </div>
       </div>
@@ -93,7 +95,7 @@ function NavItem({ href, icon, label, badge, badgeColor = "#22d3ee" }: { href: s
 }
 
 function Sidebar({ onClose }: { onClose?: () => void }) {
-  const { db } = useDB();
+  const { db, now } = useDB();
   const pending = db ? pendingApprovals(db).length : 0;
   const late = db ? money(db).lateCount : 0;
   const rooms = db ? db.projects.filter((p) => p.status !== "done") : [];
@@ -138,10 +140,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
         <div>
           <div className="kicker flex items-center justify-between px-3 pb-1.5">
             <span>Stanze</span>
-            <span className="flex items-center gap-1.5 normal-case tracking-normal">
-              <span className="led led-pulse text-lime" style={{ width: 5, height: 5 }} />
-              live
-            </span>
+            {db && <SignalBadge state={signalState(db, now)} className="!text-[10px] normal-case tracking-normal" />}
           </div>
           {rooms.map((p) => {
             const busy = db!.agents.filter((a) => a.projectId === p.id && a.status === "working").length;
@@ -214,9 +213,7 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
               <span className="led text-rose" style={{ width: 6, height: 6 }} /> offline
             </span>
           ) : (
-            <span className="chip hidden md:inline-flex" title="Fase 1: gli agenti simulano il lavoro. In fase 2 lavorano davvero sui repo.">
-              <span className="led led-pulse text-lime" style={{ width: 6, height: 6 }} /> agenti · simulazione
-            </span>
+            db && <ModeChip mode={agentsMode(db)} />
           )}
           <span className="mono hidden text-xs text-muted sm:inline">{clock}</span>
           <button className="btn btn-sm relative !p-2" onClick={() => router.push("/approvals")} aria-label="Approvazioni in attesa">
@@ -230,5 +227,75 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
         </div>
       </div>
     </header>
+  );
+}
+
+/** Modalità REALE degli agenti sui progetti aperti (UX-1): team reale, simulazione o misto. */
+function ModeChip({ mode }: { mode: AgentsMode }) {
+  const meta = {
+    real: { text: "agenti · team reale", title: "Tutti i progetti aperti lavorano con il team reale (Claude Code sul tuo PC).", color: "text-lime" },
+    sim: { text: "agenti · simulazione", title: "Tutti i progetti aperti sono in simulazione: nessun lavoro vero.", color: "text-amber" },
+    mixed: { text: `agenti · misto (${mode.real} reali, ${mode.sim} simulati)`, title: "Alcuni progetti usano il team reale, altri la simulazione: lo vedi in ogni progetto.", color: "text-neon" },
+    none: { text: "agenti · nessun progetto aperto", title: "Nessun progetto aperto.", color: "text-muted" },
+  }[mode.kind];
+  return (
+    <span className="chip hidden md:inline-flex" title={meta.title}>
+      <span className={clsx("led", meta.color)} style={{ width: 6, height: 6 }} aria-hidden /> {meta.text}
+    </span>
+  );
+}
+
+/**
+ * Avvisi delle operazioni (Fase 1 · M2):
+ * - esito NON confermato: resta visibile finché un nuovo invio non lo risolve (l'aggiornamento automatico non lo toglie);
+ *   "Riprova" usa lo stesso identificativo, quindi l'operazione non viene mai duplicata;
+ * - rifiuto: resta finché non lo chiudi o la prossima operazione riesce.
+ */
+function ActionNotices() {
+  const { uncertain, retryUncertain, actionError, clearActionError } = useDB();
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!uncertain.length && !actionError) return null;
+  return (
+    <div className="space-y-2 px-4 pb-2 sm:px-6 lg:px-8">
+      {uncertain.length > 0 && (
+        <div role="status" aria-live="polite" className="glass flex gap-3 !rounded-2xl border border-amber/40 px-4 py-3 text-sm">
+          <TriangleAlert size={16} className="mt-0.5 flex-none text-amber" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">{uncertain.length === 1 ? "1 operazione con esito non confermato" : `${uncertain.length} operazioni con esito non confermato`}</div>
+            <div className="text-xs text-muted">Potrebbero essere già state salvate. Riprova: non verranno duplicate.</div>
+            <ul className="mt-2 space-y-1.5">
+              {uncertain.map((u) => (
+                <li key={u.key} className="flex items-center gap-2 text-xs">
+                  <span className="min-w-0 flex-1 truncate">{actionLabel(u.op)}</span>
+                  <button
+                    className="btn btn-sm"
+                    disabled={busy === u.key}
+                    onClick={async () => {
+                      setBusy(u.key);
+                      try {
+                        await retryUncertain(u.key);
+                      } finally {
+                        setBusy(null);
+                      }
+                    }}
+                  >
+                    <RotateCcw size={13} aria-hidden /> {busy === u.key ? "Invio…" : "Riprova"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {actionError && (
+        <div role="alert" className="glass flex items-center gap-3 !rounded-2xl border border-rose/40 px-4 py-2.5 text-sm">
+          <TriangleAlert size={16} className="flex-none text-rose" aria-hidden />
+          <span className="min-w-0 flex-1">{actionError}</span>
+          <button className="btn btn-sm !p-1.5" onClick={clearActionError} aria-label="Chiudi avviso">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { Sparkles, X } from "lucide-react";
 import { useDB } from "@/lib/client";
 import { ROLES, packsForAgent } from "@/lib/skills";
-import { pendingApprovals, progressOf } from "@/lib/selectors";
+import { pendingApprovals, progressOf, signalState } from "@/lib/selectors";
 import type { Agent, AgentRole, Project, TaskStatus } from "@/lib/types";
 import { Sprite } from "./Sprite";
 import { elapsed } from "./LiveActivity";
@@ -189,7 +189,14 @@ export function Office({ project, selected, onSelect }: { project: Project; sele
           {/* orologio */}
           <div className="absolute right-[3%] top-[16%] flex h-[68%] w-[18%] flex-col justify-center rounded-lg border border-line2 bg-[#0b1222]/90 px-3">
             <div className="flex items-center gap-1.5 text-[9px] font-semibold tracking-widest text-rose">
-              <span className="led led-pulse" style={{ width: 5, height: 5 }} /> LIVE
+              {(() => {
+                const sig = signalState(db!, now, project.id);
+                return (
+                  <>
+                    <span className={sig.kind === "live" ? "led led-pulse" : "led"} style={{ width: 5, height: 5 }} aria-hidden /> {sig.short.toUpperCase()}
+                  </>
+                );
+              })()}
             </div>
             <div className="mono text-xl font-semibold">{clock}</div>
             <div className="mono text-[9px] text-muted">{agents.length} agenti in stanza</div>

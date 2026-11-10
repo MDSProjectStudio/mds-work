@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import clsx from "clsx";
 import { Check, Loader2, Rocket, TriangleAlert } from "lucide-react";
 import { authEnabled } from "@/lib/supabase/config";
 import type { Project, Task } from "@/lib/types";
-import { createIntentTracker, localStoragePersistence, type IntentTracker } from "@/lib/action-intent";
+import { createIntentTracker, localStoragePersistence, type IntentTracker, type UncertainOp } from "@/lib/action-intent";
+import { stableStringify } from "@/lib/stable";
 import { sendWithIntent } from "@/lib/action-send";
 
 /**
@@ -14,6 +15,7 @@ import { sendWithIntent } from "@/lib/action-send";
  */
 let launchTracker: IntentTracker | null = null;
 const tracker = () => (launchTracker ??= createIntentTracker({ persistence: localStoragePersistence("mds:avvii-incerti") }));
+const NONE: readonly UncertainOp[] = [];
 
 type State ={ kind: "idle" } | { kind: "sending" } | { kind: "waiting"; id: number; since: number } | { kind: "ok" } | { kind: "error"; msg: string };
 
@@ -24,6 +26,9 @@ type State ={ kind: "idle" } | { kind: "sending" } | { kind: "waiting"; id: numb
 export function LaunchButton({ project, task, compact, className }: { project: Project; task?: Task; compact?: boolean; className?: string }) {
   const [st, setSt] = useState<State>({ kind: "idle" });
   const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  // esito NON confermato di un avvio precedente (anche prima di un ricaricamento): resta visibile finché non si risolve
+  const opKey = stableStringify({ launch: project.id, taskId: task?.id ?? null });
+  const pendingUncertain = useSyncExternalStore((cb) => tracker().subscribe(cb), () => tracker().uncertain(), () => NONE).some((u) => u.key === opKey);
 
   useEffect(() => () => clearInterval(timer.current), []);
 
@@ -78,7 +83,13 @@ export function LaunchButton({ project, task, compact, className }: { project: P
         {st.kind === "sending" || st.kind === "waiting" ? <Loader2 size={compact ? 12 : 14} className="animate-spin" /> : st.kind === "ok" ? <Check size={compact ? 12 : 14} /> : <Rocket size={compact ? 12 : 14} />}
         {!compact && label}
       </button>
-      {st.kind === "error" && (
+      {pendingUncertain && st.kind !== "sending" && st.kind !== "waiting" && (
+        <span role="status" className="absolute right-0 top-full z-30 mt-1.5 flex w-72 gap-1.5 rounded-xl border border-amber/40 bg-[#120f05] p-2.5 text-[11.5px] text-amber shadow-xl">
+          <TriangleAlert size={13} className="mt-0.5 flex-none" aria-hidden />
+          <span>Esito non confermato: la richiesta potrebbe essere già in coda. Premi di nuovo: non verrà creato un secondo avvio.</span>
+        </span>
+      )}
+      {st.kind === "error" && !pendingUncertain && (
         <span className="absolute right-0 top-full z-30 mt-1.5 flex w-72 gap-1.5 rounded-xl border border-amber/40 bg-[#120f05] p-2.5 text-[11.5px] text-amber shadow-xl">
           <TriangleAlert size={13} className="mt-0.5 flex-none" />
           <span>
