@@ -6,7 +6,7 @@ import { normalizeDB, seedDB } from "../engine";
 import { authEnabled } from "../supabase/config";
 import { currentOwner, supabaseAdmin } from "../supabase/server";
 import { createMemoryStore } from "./memory-store";
-import { parseEnqueueResult, parseSaveResult, type StateStore } from "./state-types";
+import { parseEnqueueResult, parseSaveResult, type PortalRow, type StateStore } from "./state-types";
 
 /**
  * Archivio dati della dashboard (Fase 1 · M2: salvataggio versionato).
@@ -19,8 +19,9 @@ const DIR = process.env.MDS_DATA_DIR || path.join(process.cwd(), ".data");
 const FILE = path.join(DIR, "db.json");
 const cloud = () => authEnabled && Boolean(process.env.SUPABASE_SECRET_KEY);
 
-const MIGRATION_HINT = "Database non aggiornato: serve la migrazione M2 (supabase/migrations/20261110_m2_concorrenza.sql)";
-const sbError = (msg: string) => new Error(/save_app_state|enqueue_launch|version|schema cache|does not exist/i.test(msg) ? MIGRATION_HINT : `Supabase: ${msg}`);
+const MIGRATION_HINT = "Database non aggiornato: servono le migrazioni della Fase 1 (supabase/migrations/)";
+const sbError = (msg: string) =>
+  new Error(/save_app_state|enqueue_launch|action_outcome|portal_submit|portal_requests|version|schema cache|does not exist/i.test(msg) ? MIGRATION_HINT : `Supabase: ${msg}`);
 
 const g = globalThis as unknown as { __mdsStore?: StateStore; __mdsCloudStore?: StateStore };
 
@@ -68,6 +69,29 @@ function supabaseStore(): StateStore {
       });
       if (error) throw sbError(error.message);
       return parseSaveResult(data);
+    },
+    async portalSubmit(r) {
+      const { data, error } = await supabaseAdmin().rpc("portal_submit", { p_project_id: r.project_id, p_author: r.author, p_message: r.message, p_ip_hash: r.ip_hash });
+      if (error) throw sbError(error.message);
+      const d = (data ?? {}) as { status?: string; id?: string };
+      if (d.status === "accepted" && d.id) return { status: "accepted", id: d.id };
+      if (d.status === "limited" || d.status === "blocked") return { status: d.status };
+      throw new Error(`Risposta di portal_submit non riconosciuta: ${String(d.status)}`);
+    },
+    async listNewPortalRequests(limit) {
+      const { data, error } = await supabaseAdmin()
+        .from("portal_requests")
+        .select("id, project_id, author, message, created_at")
+        .eq("status", "new")
+        .order("created_at", { ascending: true })
+        .limit(limit);
+      if (error) throw sbError(error.message);
+      return (data ?? []) as PortalRow[];
+    },
+    async markPortalRequests(ids, status) {
+      if (!ids.length) return;
+      const { error } = await supabaseAdmin().from("portal_requests").update({ status, merged_at: new Date().toISOString() }).in("id", ids).eq("status", "new");
+      if (error) throw sbError(error.message);
     },
     async actionOutcome(actionId, requestHash) {
       const { data, error } = await supabaseAdmin().rpc("action_outcome", { p_action_id: actionId, p_request_hash: requestHash });

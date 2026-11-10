@@ -35,6 +35,16 @@ export type EnqueueResult = { status: "queued" | "duplicate"; id: number } | { s
 
 export type ActionOutcome = "applied" | "action_id_reused" | "unknown";
 
+/** Richiesta del portale clienti (tabella portal_requests, Fase 1 · M3). */
+export interface PortalRow {
+  id: string;
+  project_id: string;
+  author: string;
+  message: string;
+  created_at: string;
+}
+export type PortalSubmitResult = { status: "accepted"; id: string } | { status: "limited" } | { status: "blocked" };
+
 export interface StateStore {
   /** true se gli avvii del team sono possibili (serve Supabase e il motore sul PC). */
   readonly launches: boolean;
@@ -45,6 +55,12 @@ export interface StateStore {
   actionOutcome(actionId: string, requestHash: string): Promise<ActionOutcome>;
   /** Avvio già in coda con questa chiave? (solo lettura) */
   findLaunch(dedupeKey: string): Promise<{ id: number; request_hash: string | null } | null>;
+  /** Portale: registra una richiesta rispettando il limite (atomico). */
+  portalSubmit(r: { project_id: string; author: string; message: string; ip_hash: string }): Promise<PortalSubmitResult>;
+  /** Portale: richieste non ancora importate nello stato, dalla più vecchia. */
+  listNewPortalRequests(limit: number): Promise<PortalRow[]>;
+  /** Portale: segna le richieste come importate o scartate (solo se ancora "new"). */
+  markPortalRequests(ids: string[], status: "merged" | "discarded"): Promise<void>;
 }
 
 /** Converte la risposta JSON delle funzioni SQL nel tipo TypeScript (stessa logica per Supabase e test). */

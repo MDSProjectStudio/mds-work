@@ -1,5 +1,5 @@
 import type { DB } from "../types";
-import type { ActionOutcome, EnqueueResult, LaunchRow, SaveRequest, SaveResult, StateStore } from "./state-types";
+import type { ActionOutcome, EnqueueResult, LaunchRow, PortalRow, SaveRequest, SaveResult, StateStore } from "./state-types";
 
 /**
  * Archivio in memoria con la STESSA semantica di save_app_state (versione, registro azioni, avvii).
@@ -13,11 +13,12 @@ export interface MemoryStoreOptions {
   launches?: boolean;
 }
 
-export function createMemoryStore(opts: MemoryStoreOptions): StateStore & { launchRows: (LaunchRow & { id: number })[] } {
+export function createMemoryStore(opts: MemoryStoreOptions): StateStore & { launchRows: (LaunchRow & { id: number })[]; portalRows: (PortalRow & { status: string })[] } {
   let data: DB | null = null;
   let version = 0;
   const applied = new Map<string, { hash: string; version: number }>();
   const launchRows: (LaunchRow & { id: number })[] = [];
+  const portalRows: (PortalRow & { ip_hash: string; status: "new" | "merged" | "discarded" })[] = [];
   let nextLaunchId = 1;
 
   const ensure = () => {
@@ -28,6 +29,21 @@ export function createMemoryStore(opts: MemoryStoreOptions): StateStore & { laun
   return {
     launches: opts.launches ?? false,
     launchRows,
+    portalRows,
+    async portalSubmit(r) {
+      const t = Date.now();
+      const recent = portalRows.filter((x) => x.project_id === r.project_id && x.ip_hash === r.ip_hash && t - Date.parse(x.created_at) < 10 * 60_000);
+      if (recent.length >= 5) return { status: "limited" };
+      const id = globalThis.crypto.randomUUID();
+      portalRows.push({ ...r, id, created_at: new Date(t).toISOString(), status: "new" });
+      return { status: "accepted", id };
+    },
+    async listNewPortalRequests(limit) {
+      return portalRows.filter((x) => x.status === "new").slice(0, limit).map(({ id, project_id, author, message, created_at }) => ({ id, project_id, author, message, created_at }));
+    },
+    async markPortalRequests(ids, status) {
+      for (const x of portalRows) if (ids.includes(x.id) && x.status === "new") x.status = status;
+    },
     async load() {
       return { db: structuredClone(ensure()), version };
     },

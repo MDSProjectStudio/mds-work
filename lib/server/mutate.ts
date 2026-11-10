@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { advance, log, reduce, withIdSeed } from "../engine";
 import { buildBrief } from "../brief";
 import { stableStringify } from "../stable";
@@ -127,16 +127,48 @@ export async function advanceAndSave(store: StateStore, now: number): Promise<DB
   return (await store.load()).db;
 }
 
-/** Richiesta dal portale clienti (fino a M3: stesso salvataggio versionato, id generato dal server). */
-export async function addPortalRequest(store: StateStore, projectId: string, author: string, message: string, now: number, opts: RetryOptions = {}) {
-  const actionId = `portal:${randomUUID()}`;
-  return mutateWithRetry(
-    store,
-    actionId,
-    requestHash({ projectId, author, message }),
-    (draft) => {
-      draft.requests.push({ id: `rq_${actionId.slice(7).replace(/-/g, "").slice(0, 16)}`, projectId, author, message, status: "new", createdAt: now });
-    },
-    opts,
-  );
+/** Identificativo stabile, nello stato, di una richiesta del portale (derivato dalla riga di portal_requests). */
+export const portalRequestId = (rowId: string) => `rq_${rowId.replace(/-/g, "")}`;
+
+/**
+ * Importa nello stato le richieste del portale (Fase 1 · M3), senza doppioni:
+ * - ogni riga diventa una richiesta con id stabile (portalRequestId): se c'è già, non si aggiunge;
+ * - le righe si segnano "merged" SOLO dopo che lo stato salvato le contiene (se la segnatura fallisce,
+ *   la prossima importazione le trova già presenti e le segna soltanto);
+ * - progetto eliminato nel frattempo → "discarded";
+ * - manutenzione o conflitti → nessuna segnatura: si riprova alla lettura successiva.
+ */
+export async function importPortalRequests(store: StateStore, limit = 20): Promise<{ imported: number; discarded: number }> {
+  const rows = await store.listNewPortalRequests(limit);
+  if (!rows.length) return { imported: 0, discarded: 0 };
+  const { db } = await store.load();
+  const missing = rows.filter((r) => db.projects.some((p) => p.id === r.project_id) && !db.requests.some((q) => q.id === portalRequestId(r.id)));
+  if (missing.length) {
+    const ids = missing.map((r) => r.id).sort();
+    const hash = requestHash(ids);
+    const out = await mutateWithRetry(store, `portal-import:${hash.slice(0, 48)}`, hash, (draft) => {
+      for (const r of missing) {
+        const id = portalRequestId(r.id);
+        if (draft.requests.some((q) => q.id === id) || !draft.projects.some((p) => p.id === r.project_id)) continue;
+        draft.requests.push({ id, projectId: r.project_id, author: r.author, message: r.message, status: "new", createdAt: Date.parse(r.created_at) || Date.now() });
+      }
+    });
+    if (out.status !== "saved" && out.status !== "duplicate") return { imported: 0, discarded: 0 };
+  }
+  const after = (await store.load()).db;
+  const merged = rows.filter((r) => after.requests.some((q) => q.id === portalRequestId(r.id))).map((r) => r.id);
+  const discarded = rows.filter((r) => !after.projects.some((p) => p.id === r.project_id)).map((r) => r.id);
+  await store.markPortalRequests(merged, "merged");
+  await store.markPortalRequests(discarded, "discarded");
+  return { imported: merged.length, discarded: discarded.length };
+}
+
+/**
+ * Impronta dell'indirizzo IP per il limite del portale: l'IP non viene mai salvato in chiaro.
+ * Il "sale" segreto è MDS_PORTAL_SALT se impostato, altrimenti è derivato dalla chiave segreta del server
+ * (nessuna variabile nuova obbligatoria); in modalità offline è fisso.
+ */
+export function portalIpHash(ip: string): string {
+  const salt = process.env.MDS_PORTAL_SALT || (process.env.SUPABASE_SECRET_KEY ? createHash("sha256").update("mds-portal-salt:" + process.env.SUPABASE_SECRET_KEY).digest("hex") : "mds-offline");
+  return createHmac("sha256", salt).update(ip).digest("hex");
 }

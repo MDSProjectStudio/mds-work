@@ -4,12 +4,14 @@ import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { inject } from "vitest";
 import { seedDB } from "@/lib/engine";
-import { parseEnqueueResult, parseSaveResult, type StateStore } from "@/lib/server/state-types";
+import { parseEnqueueResult, parseSaveResult, type PortalRow, type StateStore } from "@/lib/server/state-types";
 import type { DB } from "@/lib/types";
 
 export const ROOT = path.resolve(__dirname, "../..");
 export const UP = readFileSync(path.join(ROOT, "supabase/migrations/20261110_m2_concorrenza.sql"), "utf8");
 export const DOWN = readFileSync(path.join(ROOT, "supabase/migrations/20261110_m2_concorrenza.down.sql"), "utf8");
+export const UP_M3 = readFileSync(path.join(ROOT, "supabase/migrations/20261111_m3_portale.sql"), "utf8");
+export const DOWN_M3 = readFileSync(path.join(ROOT, "supabase/migrations/20261111_m3_portale.down.sql"), "utf8");
 const SCHEMA = readFileSync(path.join(ROOT, "supabase/schema.sql"), "utf8");
 
 /** Privilegi predefiniti come in Supabase: tutto concesso ad anon/authenticated/service_role sugli oggetti nuovi. */
@@ -46,7 +48,10 @@ export async function freshDb(opts: { migrate?: boolean } = {}): Promise<TestDb>
   await admin.connect();
   await admin.query(SUPABASE_LIKE);
   await admin.query(SCHEMA);
-  if (opts.migrate !== false) await admin.query(UP);
+  if (opts.migrate !== false) {
+    await admin.query(UP);
+    await admin.query(UP_M3);
+  }
   const pools: pg.Pool[] = [];
   const clients: pg.Client[] = [];
   // il ruolo si imposta all'apertura della connessione (come fa PostgREST per la chiave segreta)
@@ -103,6 +108,18 @@ export function pgStore(pool: pg.Pool, opts: { launches?: boolean } = {}): State
     async actionOutcome(actionId, requestHash) {
       const r = await pool.query<{ r: "applied" | "action_id_reused" | "unknown" }>("select public.action_outcome($1, $2) as r", [actionId, requestHash]);
       return r.rows[0].r;
+    },
+    async portalSubmit(r) {
+      const q = await pool.query<{ r: { status: "accepted" | "limited" | "blocked"; id?: string } }>("select public.portal_submit($1, $2, $3, $4) as r", [r.project_id, r.author, r.message, r.ip_hash]);
+      const d = q.rows[0].r;
+      return d.status === "accepted" ? { status: "accepted", id: d.id! } : { status: d.status as "limited" | "blocked" };
+    },
+    async listNewPortalRequests(limit) {
+      const q = await pool.query<PortalRow & { created_at: Date }>("select id, project_id, author, message, created_at from public.portal_requests where status = 'new' order by created_at limit $1", [limit]);
+      return q.rows.map((r) => ({ ...r, created_at: new Date(r.created_at).toISOString() }));
+    },
+    async markPortalRequests(ids, status) {
+      if (ids.length) await pool.query("update public.portal_requests set status = $2, merged_at = now() where id = any($1::uuid[]) and status = 'new'", [ids, status]);
     },
     async findLaunch(dedupeKey) {
       const r = await pool.query<{ id: string; request_hash: string | null }>("select id, request_hash from public.launch_requests where dedupe_key = $1", [dedupeKey]);

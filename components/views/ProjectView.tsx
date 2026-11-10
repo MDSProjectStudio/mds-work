@@ -207,7 +207,11 @@ export function ProjectView({ id }: { id: string }) {
                     <ExternalLink size={14} /> Anteprima
                   </a>
                 </div>
-                <p className="mt-3 text-[11px] text-muted">Il link funziona per i clienti quando la dashboard è online (fase 2: deploy su Vercel). Ora puoi provarlo tu in locale.</p>
+                <p className="mt-3 text-[11px] text-muted">
+                  {/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin)
+                    ? "Stai usando la dashboard sul tuo PC: questo indirizzo funziona solo qui. Al cliente invia il link copiato dalla dashboard online."
+                    : "Chi ha il link può solo inviare richieste per questo progetto: non vede altri dati. Massimo 5 richieste ogni 10 minuti dallo stesso indirizzo."}
+                </p>
               </Card>
               <div className="space-y-3">
                 {reqs.length === 0 && <Card><Empty icon={<Inbox size={20} />} title="Nessuna richiesta" text="Quando il cliente scrive dal portale, la vedi qui." /></Card>}
