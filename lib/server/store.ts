@@ -6,7 +6,7 @@ import { normalizeDB, seedDB } from "../engine";
 import { authEnabled } from "../supabase/config";
 import { currentOwner, supabaseAdmin } from "../supabase/server";
 import { createMemoryStore } from "./memory-store";
-import { parseEnqueueResult, parseSaveResult, type PortalRow, type StateStore } from "./state-types";
+import { parseEnqueueResult, parseSaveResult, type ErrorEvent, type PortalRow, type StateStore } from "./state-types";
 
 /**
  * Archivio dati della dashboard (Fase 1 · M2: salvataggio versionato).
@@ -69,6 +69,15 @@ function supabaseStore(): StateStore {
       });
       if (error) throw sbError(error.message);
       return parseSaveResult(data);
+    },
+    async recordError(source, message, detail) {
+      const { error } = await supabaseAdmin().rpc("record_error_event", { p_source: source, p_message: message, p_detail: detail });
+      if (error) throw sbError(error.message);
+    },
+    async recentErrors(limit) {
+      const { data, error } = await supabaseAdmin().from("error_events").select("at, source, message, detail").order("at", { ascending: false }).limit(limit);
+      if (error) throw sbError(error.message);
+      return (data ?? []) as ErrorEvent[];
     },
     async portalSubmit(r) {
       const { data, error } = await supabaseAdmin().rpc("portal_submit", { p_project_id: r.project_id, p_author: r.author, p_message: r.message, p_ip_hash: r.ip_hash });

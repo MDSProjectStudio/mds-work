@@ -43,6 +43,13 @@ export interface PortalRow {
   message: string;
   created_at: string;
 }
+export interface ErrorEvent {
+  at: string;
+  source: string;
+  message: string;
+  detail: Record<string, unknown>;
+}
+
 export type PortalSubmitResult = { status: "accepted"; id: string } | { status: "limited" } | { status: "blocked" };
 
 export interface StateStore {
@@ -61,6 +68,9 @@ export interface StateStore {
   listNewPortalRequests(limit: number): Promise<PortalRow[]>;
   /** Portale: segna le richieste come importate o scartate (solo se ancora "new"). */
   markPortalRequests(ids: string[], status: "merged" | "discarded"): Promise<void>;
+  /** Registro interno degli errori (M6): messaggio già ripulito. */
+  recordError(source: string, message: string, detail: Record<string, unknown>): Promise<void>;
+  recentErrors(limit: number): Promise<ErrorEvent[]>;
 }
 
 /** Converte la risposta JSON delle funzioni SQL nel tipo TypeScript (stessa logica per Supabase e test). */

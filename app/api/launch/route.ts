@@ -1,6 +1,7 @@
 import { currentStore, loadDB, requireOwner } from "@/lib/server/store";
 import { ACTION_ID_RE, launchProblem, launchRow, requestHash } from "@/lib/server/mutate";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { reportError } from "@/lib/server/errors";
 
 /**
  * "Lavora con il team": mette in coda una richiesta che il motore locale (npm run motore)
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
       return Response.json({ id: prev.id, duplicate: true });
     }
   } catch (e) {
-    console.error("[launch]", e);
+    await reportError(store, "api/launch:ricerca", e);
     return Response.json({ error: "Database non raggiungibile" }, { status: 503 });
   }
   const db = await loadDB();
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
     }
     return Response.json({ id: r.id, duplicate: r.status === "duplicate" });
   } catch (e) {
-    console.error("[launch]", e);
+    await reportError(store, "api/launch", e);
     const msg = e instanceof Error && e.message.startsWith("Database non aggiornato") ? e.message : "Database non raggiungibile";
     return Response.json({ error: msg }, { status: 503 });
   }

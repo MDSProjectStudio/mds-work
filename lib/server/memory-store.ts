@@ -1,5 +1,5 @@
 import type { DB } from "../types";
-import type { ActionOutcome, EnqueueResult, LaunchRow, PortalRow, SaveRequest, SaveResult, StateStore } from "./state-types";
+import type { ActionOutcome, EnqueueResult, ErrorEvent, LaunchRow, PortalRow, SaveRequest, SaveResult, StateStore } from "./state-types";
 
 /**
  * Archivio in memoria con la STESSA semantica di save_app_state (versione, registro azioni, avvii).
@@ -18,6 +18,7 @@ export function createMemoryStore(opts: MemoryStoreOptions): StateStore & { laun
   let version = 0;
   const applied = new Map<string, { hash: string; version: number }>();
   const launchRows: (LaunchRow & { id: number })[] = [];
+  const errors: ErrorEvent[] = [];
   const portalRows: (PortalRow & { ip_hash: string; status: "new" | "merged" | "discarded" })[] = [];
   let nextLaunchId = 1;
 
@@ -30,6 +31,13 @@ export function createMemoryStore(opts: MemoryStoreOptions): StateStore & { laun
     launches: opts.launches ?? false,
     launchRows,
     portalRows,
+    async recordError(source, message, detail) {
+      errors.unshift({ at: new Date().toISOString(), source, message, detail });
+      errors.length = Math.min(errors.length, 100); // offline: solo gli ultimi 100, in memoria
+    },
+    async recentErrors(limit) {
+      return errors.slice(0, limit);
+    },
     async portalSubmit(r) {
       const t = Date.now();
       const recent = portalRows.filter((x) => x.project_id === r.project_id && x.ip_hash === r.ip_hash && t - Date.parse(x.created_at) < 10 * 60_000);

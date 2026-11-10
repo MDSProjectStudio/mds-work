@@ -1,5 +1,6 @@
 import { currentStore, loadDB } from "@/lib/server/store";
 import { portalIpHash } from "@/lib/server/mutate";
+import { reportError } from "@/lib/server/errors";
 
 /**
  * Portale clienti (pubblico): espone SOLO nome progetto/cliente
@@ -47,7 +48,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     if (r.status === "blocked") return Response.json({ error: "Servizio in manutenzione, riprova più tardi" }, { status: 503 });
     return Response.json({ ok: true });
   } catch (e) {
-    console.error("[portal]", e);
+    await reportError(currentStore(), "api/portal", e);
     return Response.json({ error: "Servizio non disponibile, riprova tra poco" }, { status: 503 });
   }
 }

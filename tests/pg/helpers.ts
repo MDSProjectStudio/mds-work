@@ -12,6 +12,8 @@ export const UP = readFileSync(path.join(ROOT, "supabase/migrations/20261110_m2_
 export const DOWN = readFileSync(path.join(ROOT, "supabase/migrations/20261110_m2_concorrenza.down.sql"), "utf8");
 export const UP_M3 = readFileSync(path.join(ROOT, "supabase/migrations/20261111_m3_portale.sql"), "utf8");
 export const DOWN_M3 = readFileSync(path.join(ROOT, "supabase/migrations/20261111_m3_portale.down.sql"), "utf8");
+export const UP_M6 = readFileSync(path.join(ROOT, "supabase/migrations/20261112_m6_errori.sql"), "utf8");
+export const DOWN_M6 = readFileSync(path.join(ROOT, "supabase/migrations/20261112_m6_errori.down.sql"), "utf8");
 const SCHEMA = readFileSync(path.join(ROOT, "supabase/schema.sql"), "utf8");
 
 /** Privilegi predefiniti come in Supabase: tutto concesso ad anon/authenticated/service_role sugli oggetti nuovi. */
@@ -51,6 +53,7 @@ export async function freshDb(opts: { migrate?: boolean } = {}): Promise<TestDb>
   if (opts.migrate !== false) {
     await admin.query(UP);
     await admin.query(UP_M3);
+    await admin.query(UP_M6);
   }
   const pools: pg.Pool[] = [];
   const clients: pg.Client[] = [];
@@ -108,6 +111,13 @@ export function pgStore(pool: pg.Pool, opts: { launches?: boolean } = {}): State
     async actionOutcome(actionId, requestHash) {
       const r = await pool.query<{ r: "applied" | "action_id_reused" | "unknown" }>("select public.action_outcome($1, $2) as r", [actionId, requestHash]);
       return r.rows[0].r;
+    },
+    async recordError(source, message, detail) {
+      await pool.query("select public.record_error_event($1, $2, $3::jsonb)", [source, message, JSON.stringify(detail)]);
+    },
+    async recentErrors(limit) {
+      const q = await pool.query("select at, source, message, detail from public.error_events order by at desc limit $1", [limit]);
+      return q.rows.map((r) => ({ ...r, at: new Date(r.at).toISOString() }));
     },
     async portalSubmit(r) {
       const q = await pool.query<{ r: { status: "accepted" | "limited" | "blocked"; id?: string } }>("select public.portal_submit($1, $2, $3, $4) as r", [r.project_id, r.author, r.message, r.ip_hash]);

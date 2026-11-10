@@ -2,6 +2,7 @@ import { currentStore, requireOwner } from "@/lib/server/store";
 import { withLiveEvents } from "@/lib/server/live";
 import { ACTION_ID_RE, applyAction } from "@/lib/server/mutate";
 import type { Action } from "@/lib/types";
+import { reportError } from "@/lib/server/errors";
 
 const ALLOWED = new Set<Action["type"]>([
   "addProject", "updateProject", "deleteProject", "reanalyze", "addTask", "updateTask", "deleteTask",
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
     const view = await withLiveEvents(structuredClone(r.db)).catch(() => r.db);
     return Response.json(view, { headers: { "Cache-Control": "no-store", "X-MDS-Action": r.status } });
   } catch (e) {
-    console.error("[action]", action.type, e);
+    await reportError(currentStore(), "api/action", e, { azione: action.type });
     const msg = e instanceof Error ? e.message : "";
     if (msg.startsWith("Database non aggiornato")) return Response.json({ error: msg }, { status: 503 });
     // errore del database o di rete: il browser può ritentare con lo stesso actionId senza rischio di doppioni

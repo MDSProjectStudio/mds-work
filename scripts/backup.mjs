@@ -6,21 +6,50 @@
  *   npm run backup -- esporta-chiave <dir>  → copia di emergenza PROTETTA da frase segreta (scrypt + AES-256-GCM)
  *   npm run backup -- esporta-chiave <dir> --non-cifrata → copia IN CHIARO (solo su supporto già cifrato)
  *   npm run backup -- importa-chiave <file> → ricrea la custodia DPAPI da una copia di emergenza
+ *   npm run backup -- --pianificato [--conserva N] → per l'attività pianificata (Fase 1 · M6): scrive in
+ *        MDS-Backupspianificati, NON crea chiavi nuove, verifica il file appena scritto e poi tiene solo gli
+ *        ultimi N backup DI QUELLA SOTTOCARTELLA (predefinito 8, minimo 2). I backup fuori da lì non vengono mai toccati.
  *
  * Tabelle salvate: app_state (tutto lo stato, cassaforte inclusa nel suo formato cifrato originale),
- * agent_events, launch_requests. Nessuna scrittura su Supabase. Nei log solo conteggi.
+ * agent_events, launch_requests e, se le migrazioni della Fase 1 sono applicate, anche app_config,
+ * applied_actions, app_state_history, portal_requests, error_events (facoltative: se mancano si saltano).
+ * Nessuna scrittura su Supabase. Nei log solo conteggi.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { supabase } from "./lib-supabase.mjs";
-import { BACKUP_DIR, EXPORT_PROTECTED, KEY_FILE, MIN_PASSPHRASE, PAYLOAD_FORMAT, encryptPayload, exportKeyPlain, exportKeyProtected, importKey, loadKey, sha256, stable } from "./lib-backup.mjs";
+import { BACKUP_DIR, EXPORT_PROTECTED, KEY_FILE, MIN_PASSPHRASE, PAYLOAD_FORMAT, decryptEnvelope, encryptPayload, exportKeyPlain, exportKeyProtected, importKey, loadKey, sha256, stable } from "./lib-backup.mjs";
 
 const TABLES = {
-  app_state: { query: "?select=id,data,updated_at&order=id.asc" },
+  app_state: { query: "?select=*&order=id.asc" },
   agent_events: { query: "?select=*&order=id.asc", paged: true },
   launch_requests: { query: "?select=*&order=id.asc", paged: true },
+  // Fase 1 (M2, M3, M6): esistono solo dopo le migrazioni → facoltative
+  app_config: { query: "?select=*", optional: true },
+  applied_actions: { query: "?select=*&order=action_id.asc", paged: true, optional: true },
+  app_state_history: { query: "?select=*&order=id.asc", paged: true, optional: true },
+  portal_requests: { query: "?select=*&order=created_at.asc", paged: true, optional: true },
+  error_events: { query: "?select=*&order=id.asc", paged: true, optional: true },
 };
+/** Tabella inesistente (migrazione non applicata): PostgREST risponde 404 / PGRST205. */
+const missingTable = (e) => /^404 |PGRST205|does not exist|schema cache/i.test(String(e?.message ?? e));
+
+export const SCHEDULED_SUBDIR = "pianificati";
+const BACKUP_NAME = /^mds-backup-[0-9TZ-]+.mdsbak$/;
+
+/**
+ * Rotazione dei backup PIANIFICATI: agisce solo nella sottocartella "pianificati" e solo sui file
+ * mds-backup-*.mdsbak; tiene i `keep` più recenti (minimo 2). Restituisce i nomi rimossi.
+ */
+export function rotateScheduled(dir, keep) {
+  if (path.basename(path.resolve(dir)) !== SCHEDULED_SUBDIR) throw new Error("Rotazione consentita solo nella cartella dei backup pianificati");
+  const n = Math.max(2, Math.floor(Number(keep) || 8));
+  const files = fs.readdirSync(dir).filter((f) => BACKUP_NAME.test(f)).sort();
+  const remove = files.slice(0, Math.max(0, files.length - n));
+  for (const f of remove) fs.unlinkSync(path.join(dir, f));
+  return remove;
+}
 
 /** Legge una tabella intera in sola lettura (a pagine da 1000 righe). */
 export async function readTable(sb, name) {
@@ -37,7 +66,14 @@ export async function readTable(sb, name) {
 
 export async function readAll(sb) {
   const tables = {};
-  for (const name of Object.keys(TABLES)) tables[name] = await readTable(sb, name);
+  for (const name of Object.keys(TABLES)) {
+    try {
+      tables[name] = await readTable(sb, name);
+    } catch (e) {
+      if (TABLES[name].optional && missingTable(e)) continue; // migrazione non ancora applicata
+      throw e;
+    }
+  }
   return tables;
 }
 
@@ -55,6 +91,7 @@ export function countsOf(tables) {
     cassaforte_voci: st.vault?.length ?? 0,
     cassaforte_attiva: Boolean(st.vaultMeta),
     libreria: st.library?.length ?? 0,
+    ...Object.fromEntries(Object.keys(TABLES).filter((n) => TABLES[n].optional && tables[n]).map((n) => [n, tables[n].length])),
   };
 }
 
@@ -115,11 +152,15 @@ async function main() {
     return;
   }
 
+  const scheduled = args.includes("--pianificato");
+  const outDir = scheduled ? path.join(BACKUP_DIR, SCHEDULED_SUBDIR) : BACKUP_DIR;
   const sb = supabase(15000);
   if (!sb) throw new Error("Chiavi Supabase non trovate in .env.local: backup impossibile");
-  // 1. chiave prima di leggere i dati: se la cifratura non è garantita, non esporto nulla
+  // 1. chiave prima di leggere i dati: se la cifratura non è garantita, non esporto nulla.
+  //    In modalità pianificata NON si crea mai una chiave nuova (sarebbe una chiave senza copia di emergenza).
   const created = !fs.existsSync(KEY_FILE);
-  const key = loadKey({ create: true });
+  if (scheduled && created) throw new Error("Chiave dei backup assente: il backup pianificato non ne crea una nuova. Esegui prima npm run backup a mano.");
+  const key = loadKey({ create: !scheduled });
   if (created) console.log(`✓ Nuova chiave dei backup creata e custodita con DPAPI in ${KEY_FILE}`);
 
   // 2. lettura (solo SELECT)
@@ -129,10 +170,18 @@ async function main() {
 
   // 3. cifratura e scrittura atomica
   const env = encryptPayload(payload, key, createdAt);
-  fs.mkdirSync(BACKUP_DIR, { recursive: true });
-  const file = path.join(BACKUP_DIR, `mds-backup-${createdAt.replace(/[:.]/g, "-")}.mdsbak`);
+  fs.mkdirSync(outDir, { recursive: true });
+  const file = path.join(outDir, `mds-backup-${createdAt.replace(/[:.]/g, "-")}.mdsbak`);
   fs.writeFileSync(file + ".tmp", JSON.stringify(env));
   fs.renameSync(file + ".tmp", file);
+  // 4. (pianificato) verifica del file appena scritto, POI rotazione: mai rimuovere i vecchi se il nuovo non è buono
+  if (scheduled) {
+    const back = decryptEnvelope(JSON.parse(fs.readFileSync(file, "utf8")), key);
+    if (back.sha256 !== payload.sha256 || sha256(stable(back.tables)) !== payload.sha256) throw new Error("Verifica del backup appena scritto NON riuscita: nessuna rotazione");
+    const i = args.indexOf("--conserva");
+    const removed = rotateScheduled(outDir, i >= 0 ? args[i + 1] : 8);
+    console.log(`✓ Verificato. Backup pianificati conservati in ${outDir}; rimossi i più vecchi: ${removed.length}`);
+  }
 
   const c = payload.counts;
   console.log(`✓ Backup cifrato (AES-256-GCM, chiave ${env.keyId}): ${file} (${Math.round(fs.statSync(file).size / 1024)} KB)`);
