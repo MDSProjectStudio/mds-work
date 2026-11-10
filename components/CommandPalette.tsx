@@ -23,12 +23,19 @@ export function CommandPalette({ open, onClose, onNewProject, onImport }: { open
   const [sel, setSel] = useState(0);
   const input = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  // all'apertura: ricerca vuota e prima voce selezionata (durante il render), poi il focus (effetto)
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setQ("");
       setSel(0);
-      setTimeout(() => input.current?.focus(), 30);
     }
+  }
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => input.current?.focus(), 30);
+    return () => clearTimeout(t);
   }, [open]);
 
   const items = useMemo<Item[]>(() => {

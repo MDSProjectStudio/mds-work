@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import { Bell, FileText, FolderKanban, Handshake, Inbox, KeyRound, Library, LogOut, Menu, Plus, RotateCcw, Search, ShieldCheck, Sun, TriangleAlert, Wallet, X } from "lucide-react";
@@ -27,6 +27,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [palette, setPalette] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const pathname = usePathname();
+  // menu mobile accessibile (UX-7): il focus entra nel menu, Esc lo chiude, alla chiusura torna al pulsante
+  const menuBtn = useRef<HTMLButtonElement>(null);
+  const navWasOpen = useRef(false);
+  useEffect(() => {
+    if (navWasOpen.current && !mobileNav) menuBtn.current?.focus();
+    navWasOpen.current = mobileNav;
+  }, [mobileNav]);
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -39,7 +46,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", k);
   }, []);
 
-  useEffect(() => setMobileNav(false), [pathname]);
+  // cambio di pagina → il menu mobile si chiude (aggiornamento durante il render, senza effetto)
+  const [navPath, setNavPath] = useState(pathname);
+  if (navPath !== pathname) {
+    setNavPath(pathname);
+    setMobileNav(false);
+  }
 
   return (
     <UIContext.Provider value={{ openNewProject: () => setNewOpen(true), openPalette: () => setPalette(true), openImport: () => setImportOpen(true) }}>
@@ -49,7 +61,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </aside>
         <AnimatePresence>
           {mobileNav && (
-            <motion.div className="fixed inset-0 z-40 lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div
+              className="fixed inset-0 z-40 lg:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu di navigazione"
+              onKeyDown={(e) => e.key === "Escape" && setMobileNav(false)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileNav(false)} />
               <motion.div className="absolute inset-y-0 left-0 w-[280px] p-3" initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }} transition={{ type: "spring", damping: 28, stiffness: 300 }}>
                 <Sidebar onClose={() => setMobileNav(false)} />
@@ -58,7 +79,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
         </AnimatePresence>
         <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar onMenu={() => setMobileNav(true)} />
+          <Topbar onMenu={() => setMobileNav(true)} menuRef={menuBtn} />
           <ActionNotices />
           <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-24 pt-2 sm:px-6 lg:px-8">{children}</main>
         </div>
@@ -112,7 +133,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
           <div className="kicker !text-[9px]">studio · os</div>
         </div>
         {onClose && (
-          <button className="btn btn-sm !p-1.5" onClick={onClose} aria-label="Chiudi menu">
+          <button className="btn btn-sm !p-1.5" onClick={onClose} aria-label="Chiudi menu" autoFocus>
             <X size={15} />
           </button>
         )}
@@ -173,7 +194,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
           className="mx-2.5 mb-2.5 flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-[12.5px] text-muted transition hover:bg-white/[0.04] hover:text-fg"
           onClick={async () => {
             await supabaseBrowser().auth.signOut();
-            window.location.href = "/login";
+            window.location.assign(new URL("/login", window.location.href).href);
           }}
         >
           <LogOut size={14} /> Esci
@@ -183,7 +204,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
   );
 }
 
-function Topbar({ onMenu }: { onMenu: () => void }) {
+function Topbar({ onMenu, menuRef }: { onMenu: () => void; menuRef: React.RefObject<HTMLButtonElement | null> }) {
   const { db, error } = useDB();
   const { openNewProject, openPalette } = useUI();
   const router = useRouter();
@@ -199,7 +220,7 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
   return (
     <header className="sticky top-0 z-30 px-4 pb-3 pt-3 sm:px-6 lg:px-8">
       <div className="glass flex items-center gap-2 !rounded-2xl px-2.5 py-2 sm:gap-3" style={{ background: "linear-gradient(180deg, rgba(13,19,36,.9), rgba(8,12,24,.88))" }}>
-        <button className="btn btn-sm !p-2 lg:hidden" onClick={onMenu} aria-label="Apri menu">
+        <button ref={menuRef} className="btn btn-sm !p-2 lg:hidden" onClick={onMenu} aria-label="Apri menu">
           <Menu size={16} />
         </button>
         <button onClick={openPalette} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-line bg-black/20 px-3 py-2 text-left text-sm text-muted transition hover:border-line2 sm:max-w-md">
@@ -216,11 +237,11 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
             db && <ModeChip mode={agentsMode(db)} />
           )}
           <span className="mono hidden text-xs text-muted sm:inline">{clock}</span>
-          <button className="btn btn-sm relative !p-2" onClick={() => router.push("/approvals")} aria-label="Approvazioni in attesa">
+          <button className="btn btn-sm relative !p-2" onClick={() => router.push("/approvals")} aria-label={pending > 0 ? `${pending} approvazioni in attesa` : "Approvazioni in attesa"}>
             <Bell size={16} />
             {pending > 0 && <span className="mono absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-amber px-1 text-[9.5px] font-bold text-black">{pending}</span>}
           </button>
-          <button className="btn btn-primary btn-sm" onClick={openNewProject}>
+          <button className="btn btn-primary btn-sm" onClick={openNewProject} aria-label="Nuovo progetto">
             <Plus size={15} />
             <span className="hidden sm:inline">Nuovo progetto</span>
           </button>

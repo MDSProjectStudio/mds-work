@@ -78,7 +78,7 @@ export function PipelineView() {
         <Stat label="Da richiamare" value={followups} sub="oggi o in ritardo" icon={<CalendarClock size={16} />} color="#fbbf24" delay={0.15} />
       </div>
 
-      <div className="overflow-x-auto pb-2">
+      <div className="overflow-x-auto pb-2" tabIndex={0} role="region" aria-label="Fasi della pipeline">
         <div className="grid min-w-[1100px] grid-cols-5 gap-3">
           {STAGES.map((s) => {
             const list = db.leads.filter((l) => l.stage === s.key);

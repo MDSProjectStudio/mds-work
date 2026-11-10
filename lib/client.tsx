@@ -38,7 +38,7 @@ export function DBProvider({ children }: { children: React.ReactNode }) {
     try {
       const r = await fetch("/api/state", { cache: "no-store" });
       if (r.status === 401) {
-        window.location.href = "/login";
+        window.location.assign(new URL("/login", window.location.href).href);
         return;
       }
       const j = await r.json();
@@ -53,12 +53,13 @@ export function DBProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refresh();
+    const first = setTimeout(refresh, 0); // primo caricamento appena montato (asincrono, come i successivi)
     const id = setInterval(() => {
       if (document.visibilityState === "visible") refresh();
     }, 2000);
     const tick = setInterval(() => setNow(Date.now()), 1000);
     return () => {
+      clearTimeout(first);
       clearInterval(id);
       clearInterval(tick);
     };

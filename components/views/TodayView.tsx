@@ -162,7 +162,7 @@ export function TodayView() {
 
           <Card className="p-4 sm:p-5">
             <SectionTitle kicker="attività" title="Cosa sta succedendo" right={<SignalBadge state={signalState(db, now)} />} />
-            <div className="mt-4 max-h-[460px] overflow-y-auto pr-1">
+            <div className="mt-4 max-h-[460px] overflow-y-auto pr-1" tabIndex={0} role="region" aria-label="Attività recenti">
               <LogFeed logs={db.logs} showProject max={16} />
             </div>
           </Card>

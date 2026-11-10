@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import clsx from "clsx";
 import { ArrowLeft, Check, Copy, ExternalLink, FolderOpen, GitBranch, Inbox, KeyRound, LayoutGrid, ListTodo, MessageSquare, CirclePause, Settings2, Sparkles, Trash, Wallet } from "lucide-react";
 import { useDB } from "@/lib/client";
@@ -36,6 +36,8 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
+const noSubscribe = () => () => {};
+
 export function ProjectView({ id }: { id: string }) {
   const { db, dispatch, now } = useDB();
   const router = useRouter();
@@ -43,13 +45,15 @@ export function ProjectView({ id }: { id: string }) {
   const [tab, setTab] = useState<TabKey>("room");
   const [agent, setAgent] = useState<string>();
   const [copied, setCopied] = useState(false);
-  const [origin, setOrigin] = useState("");
+  const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
 
-  useEffect(() => {
-    const t = search.get("tab") as TabKey | null;
-    if (t && TABS.some((x) => x.key === t)) setTab(t);
-  }, [search]);
-  useEffect(() => setOrigin(window.location.origin), []);
+  // ?tab=… nell'indirizzo apre quella scheda (aggiornamento durante il render, senza effetto)
+  const tabParam = search.get("tab");
+  const [seenTab, setSeenTab] = useState<string | null>(null);
+  if (tabParam !== seenTab) {
+    setSeenTab(tabParam);
+    if (tabParam && TABS.some((x) => x.key === tabParam)) setTab(tabParam as TabKey);
+  }
 
   if (!db) return <Loading />;
   const p = db.projects.find((x) => x.id === id);
@@ -96,7 +100,7 @@ export function ProjectView({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <LaunchButton project={p} />
             <BriefButton project={p} className="!py-2" />
-            <select className="field !w-auto !py-2 text-sm" value={p.status} onChange={(e) => dispatch({ type: "updateProject", id: p.id, patch: { status: e.target.value as ProjectStatus } })}>
+            <select aria-label="Stato del progetto" className="field !w-auto !py-2 text-sm" value={p.status} onChange={(e) => dispatch({ type: "updateProject", id: p.id, patch: { status: e.target.value as ProjectStatus } })}>
               <option value="planned">Da iniziare</option>
               <option value="active">In corso</option>
               <option value="waiting_client">In attesa cliente</option>
@@ -160,7 +164,7 @@ export function ProjectView({ id }: { id: string }) {
               <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
                 <Card className="p-4">
                   <SectionTitle kicker="terminale" title="Log della stanza" right={<SignalBadge state={signalState(db, now, p.id)} />} />
-                  <div className="mt-3 max-h-[300px] overflow-y-auto rounded-xl border border-line bg-[#03060d] p-3">
+                  <div className="mt-3 max-h-[300px] overflow-y-auto rounded-xl border border-line bg-[#03060d] p-3" tabIndex={0} role="region" aria-label="Log della stanza">
                     <LogFeed logs={db.logs.filter((l) => l.projectId === p.id)} terminal max={40} />
                   </div>
                 </Card>

@@ -49,7 +49,7 @@ export function InboxView() {
                 <div className="mono mt-0.5 text-[11px] text-muted">{fmtRel(i.createdAt, now)}</div>
               </div>
               <div className="flex items-center gap-2">
-                <select className="field !w-44 !py-1.5 text-[13px]" value={target[i.id] ?? ""} onChange={(e) => setTarget((t) => ({ ...t, [i.id]: e.target.value }))}>
+                <select aria-label="Progetto in cui spostarla" className="field !w-44 !py-1.5 text-[13px]" value={target[i.id] ?? ""} onChange={(e) => setTarget((t) => ({ ...t, [i.id]: e.target.value }))}>
                   <option value="">Sposta in…</option>
                   {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>

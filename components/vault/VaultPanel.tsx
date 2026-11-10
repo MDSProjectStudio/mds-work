@@ -119,14 +119,18 @@ function Editor({ open, onClose, entry, secret, projectId }: { open: boolean; on
   const [s, setS] = useState<Secret>(EMPTY_SECRET);
   const [show, setShow] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
+  // Riempie il modulo all'APERTURA, al cambio di voce o quando il segreto decifrato arriva per la prima volta.
+  // Prima si riempiva a ogni aggiornamento automatico (ogni 2 s), cancellando le modifiche in corso.
+  const [filled, setFilled] = useState<{ open: boolean; entryId?: string; hasSecret: boolean }>({ open: false, hasSecret: false });
+  if (!open && filled.open) setFilled({ open: false, hasSecret: false });
+  if (open && (!filled.open || filled.entryId !== entry?.id || (!filled.hasSecret && !!secret))) {
+    setFilled({ open: true, entryId: entry?.id, hasSecret: !!secret });
     setProvider(entry?.provider ?? "github");
     setLabel(entry?.label ?? "");
     setPid(entry?.projectId ?? projectId ?? "");
     setS(secret ?? EMPTY_SECRET);
     setShow(false);
-  }, [open, entry, secret, projectId]);
+  }
 
   const save = async () => {
     if (!key || !db) return;
@@ -268,11 +272,10 @@ export function VaultPanel({ projectId }: { projectId?: string }) {
 
   const entries = useMemo(() => (db?.vault ?? []).filter((v) => !projectId || v.projectId === projectId), [db?.vault, projectId]);
 
+  // bloccando la cassaforte (chiave tolta) i segreti decifrati spariscono dalla memoria
+  useEffect(() => () => setSecrets({}), [key]);
   useEffect(() => {
-    if (!key) {
-      setSecrets({});
-      return;
-    }
+    if (!key) return;
     let alive = true;
     (async () => {
       const out: Record<string, Secret> = {};

@@ -31,14 +31,14 @@ export function PaymentsList({ projectId }: { projectId?: string }) {
         }}
       >
         {!projectId && (
-          <select className="field !py-2 text-[13px]" value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
+          <select aria-label="Progetto dell'incasso" className="field !py-2 text-[13px]" value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
             <option value="">Progetto…</option>
             {db.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         )}
-        <input className={clsx("field !py-2 text-[13px]", projectId && "sm:col-span-2")} placeholder="Voce (es. Seconda rata)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
-        <input className="field mono !py-2 text-[13px]" placeholder="€" inputMode="numeric" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/[^\d]/g, "") })} />
-        <input type="date" className="field mono !py-2 text-[13px]" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+        <input className={clsx("field !py-2 text-[13px]", projectId && "sm:col-span-2")} aria-label="Voce dell'incasso" placeholder="Voce (es. Seconda rata)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
+        <input aria-label="Importo in euro" className="field mono !py-2 text-[13px]" placeholder="€" inputMode="numeric" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/[^\d]/g, "") })} />
+        <input type="date" aria-label="Data di scadenza" className="field mono !py-2 text-[13px]" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
         <button className="btn btn-primary btn-sm">
           <Plus size={14} /> Aggiungi
         </button>

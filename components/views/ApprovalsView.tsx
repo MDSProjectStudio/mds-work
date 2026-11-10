@@ -24,7 +24,7 @@ export function ApprovalsView() {
         title="Approvazioni"
         subtitle="Gli agenti lavorano da soli: qui arrivano solo le cose che richiedono il tuo ok o i bug da decidere."
         actions={
-          <select className="field !w-auto !py-2 text-sm" value={project} onChange={(e) => setProject(e.target.value)}>
+          <select aria-label="Filtra per progetto" className="field !w-auto !py-2 text-sm" value={project} onChange={(e) => setProject(e.target.value)}>
             <option value="all">Tutti i progetti</option>
             {db.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>

@@ -15,7 +15,8 @@
     "backup:verifica": "node --no-warnings scripts/restore-test.mjs",
     "prova:isolata": "node scripts/prova-isolata.mjs",
     "test:unit": "node node_modules/vitest/vitest.mjs run",
-    "test:pg": "node node_modules/vitest/vitest.mjs run --config vitest.pg.config.ts"
+    "test:pg": "node node_modules/vitest/vitest.mjs run --config vitest.pg.config.ts",
+    "test:e2e": "node node_modules/@playwright/test/cli.js test"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -29,7 +30,9 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@electric-sql/pglite": "0.5.12",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/pg": "8.23.1",
@@ -38,6 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
     "pg": "8.23.1",
+    "playwright-core": "1.64.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "8.3.5",
