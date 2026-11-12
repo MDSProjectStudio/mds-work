@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Avvia la dashboard in modalità ONLINE (login Supabase) contro il progetto di PROVA, solo su localhost.
- *   MDS_ENV_FILE=<file di chiavi del progetto di prova> node tests/isolato/avvia-app-prova.mjs [porta]
+ *   MDS_ENV_FILE=<file di chiavi del progetto di prova> node tests/isolato/avvia-app-prova.mjs [porta] [--senza-build]
+ * Ascolta SOLO su 127.0.0.1 (non sulla rete locale).
  * Costruisce in una cartella separata (.next-prova) e non tocca né .next né .data.
  * Si rifiuta di partire senza MDS_ENV_FILE e senza il marcatore MDS_AMBIENTE=prova nel file.
  */
@@ -36,9 +37,11 @@ const childEnv = {
   NEXT_TELEMETRY_DISABLED: "1",
 };
 const next = path.join("node_modules", "next", "dist", "bin", "next");
-console.log("Costruzione (può richiedere un paio di minuti)…");
-const b = spawnSync(process.execPath, [next, "build"], { env: childEnv, stdio: ["ignore", "ignore", "inherit"] });
-if (b.status !== 0) process.exit(b.status ?? 1);
+if (!process.argv.includes("--senza-build")) {
+  console.log("Costruzione (può richiedere un paio di minuti)…");
+  const b = spawnSync(process.execPath, [next, "build"], { env: childEnv, stdio: ["ignore", "ignore", "inherit"] });
+  if (b.status !== 0) process.exit(b.status ?? 1);
+}
 console.log(`App di prova pronta su http://localhost:${port} (progetto di prova, proprietario ${env.MDS_OWNER_EMAIL})`);
-const s = spawn(process.execPath, [next, "start", "-p", port], { env: childEnv, stdio: "inherit" });
+const s = spawn(process.execPath, [next, "start", "-H", "127.0.0.1", "-p", port], { env: childEnv, stdio: "inherit" });
 s.on("exit", (c) => process.exit(c ?? 0));
