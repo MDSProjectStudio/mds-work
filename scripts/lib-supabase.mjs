@@ -6,12 +6,30 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(HERE, "..");
+
+/**
+ * Dove sta .env.local:
+ * - copia installata degli hook (~/.claude/mds/bin/vN/): runtime.json accanto a questo file indica il percorso
+ *   (solo il percorso, mai le chiavi)
+ * - repository MDS Work: <repo>/.env.local
+ * - MDS_ENV_FILE (Fase 1, prova isolata): percorso di un ALTRO file di chiavi, per puntare motore e backup a un
+ *   progetto Supabase di PROVA senza toccare .env.local. Ha la precedenza su tutto il resto.
+ */
+export function envFilePath() {
+  if (process.env.MDS_ENV_FILE) return path.resolve(process.env.MDS_ENV_FILE);
+  try {
+    const rt = JSON.parse(fs.readFileSync(path.join(HERE, "runtime.json"), "utf8"));
+    if (rt.envFile) return rt.envFile;
+  } catch {}
+  return path.join(ROOT, ".env.local");
+}
 
 export function loadEnv() {
   const env = {};
   try {
-    for (const line of fs.readFileSync(path.join(ROOT, ".env.local"), "utf8").split(/\r?\n/)) {
+    for (const line of fs.readFileSync(envFilePath(), "utf8").split(/\r?\n/)) {
       const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
       if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, "");
     }
@@ -22,7 +40,7 @@ export function loadEnv() {
 export function supabase(timeoutMs = 8000) {
   const { url, key } = loadEnv();
   if (!url || !key) return null;
-  const req = async (method, table, query = "", body) => {
+  const req = async (method, table, query = "", body, returning = false) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -33,12 +51,12 @@ export function supabase(timeoutMs = 8000) {
           apikey: key,
           Authorization: `Bearer ${key}`,
           "Content-Type": "application/json",
-          Prefer: method === "GET" ? "" : "return=minimal",
+          Prefer: method === "GET" ? "" : returning ? "return=representation" : "return=minimal",
         },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
-      return method === "GET" ? r.json() : null;
+      return method === "GET" || returning ? r.json() : null;
     } finally {
       clearTimeout(t);
     }
@@ -47,6 +65,8 @@ export function supabase(timeoutMs = 8000) {
     select: (table, query) => req("GET", table, query),
     insert: (table, rows) => req("POST", table, "", rows),
     update: (table, query, patch) => req("PATCH", table, query, patch),
+    /** Aggiornamento condizionato: restituisce le righe davvero modificate (vuoto = condizione non vera). */
+    updateReturning: (table, query, patch) => req("PATCH", table, query, patch, true),
     remove: (table, query) => req("DELETE", table, query),
   };
 }

@@ -174,3 +174,14 @@ export function Loading() {
 export function ProjectDot({ color, size = 8 }: { color: string; size?: number }) {
   return <span className="inline-block flex-none rounded-full" style={{ width: size, height: size, background: color, boxShadow: `0 0 10px ${color}` }} />;
 }
+
+/** Etichetta di freschezza dei segnali (UX-3): pulsa SOLO con un segnale vero recente. */
+export function SignalBadge({ state, className }: { state: import("@/lib/selectors").SignalState; className?: string }) {
+  const color = state.kind === "live" ? "text-lime" : state.kind === "sim" ? "text-amber" : "text-muted";
+  return (
+    <span className={clsx("flex items-center gap-1.5 text-xs", color, className)} title={state.lastAt ? new Date(state.lastAt).toLocaleString("it-IT") : undefined}>
+      <span className={clsx("led", state.kind === "live" && "led-pulse")} style={{ width: 6, height: 6 }} aria-hidden />
+      {state.text}
+    </span>
+  );
+}

@@ -114,3 +114,43 @@ export function greeting() {
 export function mrr(db: DB): number {
   return db.projects.reduce((s, p) => s + (p.maintenance?.active ? p.maintenance.monthly : 0), 0);
 }
+
+/* ---------------- Fase 1 · M4: stato reale degli agenti (UX-1, UX-3) ---------------- */
+
+/** Un segnale vero (hook di Claude Code / motore) è "live" se è più recente di così. */
+export const LIVE_SIGNAL_MS = 5 * 60_000;
+
+export type AgentsMode = { kind: "real" | "sim" | "mixed" | "none"; real: number; sim: number };
+
+/** Modalità degli agenti sui progetti NON conclusi: team reale, simulazione o misto (UX-1). */
+export function agentsMode(db: DB): AgentsMode {
+  const open = db.projects.filter((p) => p.status !== "done");
+  const real = open.filter((p) => p.agentsMode === "off").length;
+  const sim = open.length - real;
+  return { kind: real && sim ? "mixed" : real ? "real" : sim ? "sim" : "none", real, sim };
+}
+
+export type SignalState = { kind: "live" | "stale" | "sim" | "none"; lastAt?: number; text: string; short: string };
+
+const ago = (ms: number) => {
+  const m = Math.max(1, Math.round(ms / 60_000));
+  if (m < 60) return `${m} min fa`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} h fa`;
+  return `${Math.round(h / 24)} giorni fa`;
+};
+
+/**
+ * Freschezza dei segnali VERI (UX-3): "live" solo con un segnale recente; altrimenti "ultimo segnale X fa".
+ * La simulazione non è un segnale: è etichettata come tale.
+ */
+export function signalState(db: DB, now: number, projectId?: string): SignalState {
+  const projects = db.projects.filter((p) => (projectId ? p.id === projectId : p.status !== "done"));
+  const ids = new Set(projects.map((p) => p.id));
+  let lastAt = 0;
+  for (const a of db.agents) if (ids.has(a.projectId) && a.live?.lastAt && a.live.lastAt > lastAt) lastAt = a.live.lastAt;
+  if (lastAt && now - lastAt < LIVE_SIGNAL_MS) return { kind: "live", lastAt, text: "live", short: "live" };
+  if (lastAt) return { kind: "stale", lastAt, text: `ultimo segnale ${ago(now - lastAt)}`, short: ago(now - lastAt) };
+  if (projects.some((p) => p.agentsMode !== "off")) return { kind: "sim", text: "simulazione", short: "simulazione" };
+  return { kind: "none", text: "nessun segnale", short: "nessun segnale" };
+}

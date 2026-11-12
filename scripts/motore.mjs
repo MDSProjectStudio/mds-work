@@ -40,10 +40,14 @@ async function event(projectId, text, level = "info", status = null, role = "chi
 }
 
 async function handle(req, projects) {
+  // Presa CONDIZIONATA (Fase 1 · M2): la richiesta passa da "pending" a "claimed" solo se è ancora "pending".
+  // Se due motori sono accesi (o un tick si sovrappone), uno solo la prende: niente lavori avviati due volte.
+  const got = await sb.updateReturning("launch_requests", `?id=eq.${req.id}&status=eq.pending`, { status: "claimed" });
+  if (!got?.length) return say(`… richiesta ${req.id} già presa da un altro motore`);
   const p = projects.find((x) => x.id === req.project_id);
   const fail = async (msg) => {
     say(`✗ ${msg}`);
-    await sb.update("launch_requests", `?id=eq.${req.id}`, { status: "error", note: msg });
+    await sb.update("launch_requests", `?id=eq.${req.id}&status=eq.claimed`, { status: "error", note: msg });
     if (p) await event(p.id, msg, "error");
   };
   if (!p) return fail("Progetto non trovato nella dashboard");
@@ -76,7 +80,7 @@ async function handle(req, projects) {
     await event(p.id, "Brief pronto: apri questa cartella nell'app Claude e incolla /mds-team (è già negli appunti)", "success", "waiting");
     say(`✓ ${p.name}: brief pronto. Apri la cartella nell'app Claude e incolla /mds-team (già copiato)`);
   }
-  await sb.update("launch_requests", `?id=eq.${req.id}`, { status: "started" });
+  await sb.update("launch_requests", `?id=eq.${req.id}&status=eq.claimed`, { status: "started" });
 }
 
 let lastCleanup = 0;

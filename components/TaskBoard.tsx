@@ -98,17 +98,17 @@ export function TaskBoard({ project }: { project: Project }) {
           setDue("");
         }}
       >
-        <input className="field !py-2 text-[13.5px]" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nuova task… (es. Sistemare il footer su mobile)" />
-        <select className="field !py-2 text-[13px]" value={assignee} onChange={(e) => setAssignee(e.target.value as "me" | AgentRole)}>
+        <input aria-label="Titolo della nuova task" className="field !py-2 text-[13.5px]" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nuova task… (es. Sistemare il footer su mobile)" />
+        <select aria-label="A chi assegnarla" className="field !py-2 text-[13px]" value={assignee} onChange={(e) => setAssignee(e.target.value as "me" | AgentRole)}>
           <option value="me">👤 Io</option>
           {team.map((r) => <option key={r} value={r}>🤖 {ROLES[r].name} · {ROLES[r].label}</option>)}
         </select>
-        <select className="field !py-2 text-[13px]" value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
+        <select aria-label="Priorità" className="field !py-2 text-[13px]" value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
           <option value="high">Alta</option>
           <option value="med">Media</option>
           <option value="low">Bassa</option>
         </select>
-        <input type="date" className="field mono !py-2 text-[13px]" value={due} onChange={(e) => setDue(e.target.value)} />
+        <input type="date" aria-label="Scadenza" className="field mono !py-2 text-[13px]" value={due} onChange={(e) => setDue(e.target.value)} />
         <button className="btn btn-primary btn-sm">
           <Plus size={14} /> Aggiungi
         </button>

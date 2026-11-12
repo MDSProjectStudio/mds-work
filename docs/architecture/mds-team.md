@@ -50,17 +50,27 @@ Chiusura (mds-done): Definition of Done, progress.md, riepilogo al titolare
 - `~/.claude/agents/mds-*.md` (12) con modello/effort del tier
 - `~/.claude/skills/mds-*/` (45)
 - `~/.claude/mds/` → `policies/`, `schemas/`, `templates/`, `config.json`, `lessons/`
+- `~/.claude/mds/bin/v3/` → copia versionata degli hook (`mds-guard.mjs`, `mds-hook.mjs`, `lib-supabase.mjs`) con `manifest.json` (impronte SHA-256) e `runtime.json` (solo il percorso di `.env.local` di MDS Work). Le versioni precedenti restano per il rollback
+- `~/.claude/mds/backup/<data>/` → configurazione precedente, salvata a ogni installazione
 
 **In un progetto (`npm run kit -- progetto <cartella> --tipo webapp`, fatto anche dal motore)**
 - blocco MDS nel `CLAUDE.md` (tra `<!-- MDS-TEAM:START -->` e `<!-- MDS-TEAM:END -->`, il resto non viene toccato)
 - `docs/MAPPA.md`, `docs/decisions/`, `docs/plans/`
 - `.mds/project.json`, `.mds/state/tests.json`, `.mds/lessons/project.yaml`
-- `.claude/settings.json`: hook (SessionStart, UserPromptSubmit, Notification, Stop, Pre/PostToolUse) e `enabledPlugins` del tipo
+- `.claude/settings.json`: hook in forma exec da `~/.claude/mds/bin/v3/` (SessionStart, UserPromptSubmit, Notification, Stop, SubagentStop, Pre/PostToolUse) — il guard sugli strumenti sensibili ha `onFailure: "block"` —, regole di permesso native (`permissions.ask`) e `enabledPlugins` del tipo
+- `.mds/project.json`: anche `mcp.allow` (MCP autorizzati per il progetto), `extraWriteDirs`, `managedPermissions`; il `projectId` della dashboard si conserva a ogni reinstallazione
+- `.mds/backup/<data>/`: copia della configurazione precedente (rollback con `npm run kit -- ripristina "<progetto>"`)
 - righe in `.gitignore` per `.mds/brief.md`, `.mds/state/`, `.mds/telemetry/`
 
 L'installazione è idempotente: rilanciarla aggiorna senza duplicare.
 
 ## Conferme obbligatorie
+
+Le protezioni sono su **due livelli indipendenti**.
+1. **Regole native di Claude Code** (`permissions.ask`): push, reset/clean, `rm -rf` su radice, home o cartelle superiori, deploy di produzione, reset di database, installazioni globali, lettura e modifica dei file `.env` con segreti. Valgono anche se gli hook mancano.
+2. **Guard MDS fail-closed**: se regole, file o impronte non sono integri, chiede conferma per ogni azione sensibile; se lo script non parte, Claude Code blocca l'azione. All'avvio di ogni sessione l'hook segnala al titolare eventuali problemi; la diagnosi completa è `npm run kit -- doctor`.
+
+Nei progetti con kit v3 il guard chiede conferma anche per le **scritture fuori dalla cartella del progetto** e per gli **MCP non autorizzati** dal progetto. Chiede conferma per le azioni sensibili anche quando la protezione **non è verificabile**: `project.json` illeggibile, assente o incoerente, `mcp.allow` assente, manifest delle impronte assente o incompleto. I progetti v2 serviti dal guard del repository mantengono il comportamento precedente.
 
 Il guard chiede conferma per: push forzato, reset/clean, `rm -rf` fuori dalle cartelle di build, deploy in produzione, distruzione di infrastruttura, reset/push di database, SQL distruttivo o su permessi, migrazioni/deploy/pagamenti/scritture GitHub via MCP, lettura o modifica di `.env`, `curl | sh`, installazioni globali o di skill/MCP/plugin, push di Rocket su main. Blocca sempre i segreti scritti nel codice.
 

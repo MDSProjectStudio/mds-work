@@ -1,25 +1,14 @@
-import { uid } from "@/lib/engine";
-import { loadDB, saveDB } from "@/lib/server/store";
+import { currentStore, loadDB } from "@/lib/server/store";
+import { portalIpHash } from "@/lib/server/mutate";
+import { reportError } from "@/lib/server/errors";
 
 /**
  * Portale clienti (pubblico): espone SOLO nome progetto/cliente
  * e accetta richieste testuali. Il testo è trattato come dato non fidato:
  * viene salvato e analizzato, mai eseguito.
  */
-const hits = new Map<string, number[]>();
-const WINDOW = 10 * 60_000;
-const MAX = 5;
-
-function limited(key: string, now: number) {
-  const arr = (hits.get(key) ?? []).filter((t) => now - t < WINDOW);
-  if (arr.length >= MAX) {
-    hits.set(key, arr);
-    return true;
-  }
-  arr.push(now);
-  hits.set(key, arr);
-  return false;
-}
+// Limite: 5 richieste ogni 10 minuti per progetto e indirizzo, controllato nel DATABASE (portal_submit):
+// vale su tutte le istanze del server, a differenza del vecchio contatore in memoria.
 
 async function findProject(token: string) {
   if (!/^[a-f0-9]{16,40}$/i.test(token)) return undefined;
@@ -39,8 +28,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   if (!p) return Response.json({ error: "Link non valido" }, { status: 404 });
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "local";
-  const now = Date.now();
-  if (limited(`${ip}:${token}`, now)) return Response.json({ error: "Troppe richieste, riprova tra qualche minuto" }, { status: 429 });
 
   let body: { author?: unknown; message?: unknown; website?: unknown };
   try {
@@ -54,8 +41,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   if (message.length < 8) return Response.json({ error: "Scrivi qualche parola in più" }, { status: 400 });
   if (message.length > 2000) return Response.json({ error: "Massimo 2000 caratteri" }, { status: 400 });
 
-  const db = await loadDB();
-  db.requests.push({ id: uid("rq_"), projectId: p.id, author: author || p.client || "Cliente", message, status: "new", createdAt: now });
-  await saveDB(db);
-  return Response.json({ ok: true });
+  // M3: la richiesta va nella tabella portal_requests (mai nello stato della dashboard); la dashboard la importa.
+  try {
+    const r = await currentStore().portalSubmit({ project_id: p.id, author: author || p.client || "Cliente", message, ip_hash: portalIpHash(ip) });
+    if (r.status === "limited") return Response.json({ error: "Troppe richieste, riprova tra qualche minuto" }, { status: 429 });
+    if (r.status === "blocked") return Response.json({ error: "Servizio in manutenzione, riprova più tardi" }, { status: 503 });
+    return Response.json({ ok: true });
+  } catch (e) {
+    await reportError(currentStore(), "api/portal", e);
+    return Response.json({ error: "Servizio non disponibile, riprova tra poco" }, { status: 503 });
+  }
 }

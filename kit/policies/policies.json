@@ -1,10 +1,10 @@
 {
-  "version": 1,
+  "version": 3,
   "_info": "Policy applicate dall'hook mds-guard (PreToolUse). decision: ask = chiede conferma al titolare, deny = blocca. 'tools' e 'pattern' sono regex (case-insensitive); 'pattern' si applica al campo 'field' dell'input dello strumento (o a tutto l'input se assente). I progetti possono aggiungere regole in .mds/policies/*.json.",
   "rules": [
     {
       "id": "git-force-push",
-      "tools": "^Bash$",
+      "tools": "^(Bash|PowerShell)$",
       "field": "command",
       "pattern": "git\\s+push\\b[^\\n]*(\\s--force(?!-with-lease)|\\s-f\\b|\\s--force-with-lease)",
       "decision": "ask",
@@ -12,7 +12,7 @@
     },
     {
       "id": "git-reset-hard",
-      "tools": "^Bash$",
+      "tools": "^(Bash|PowerShell)$",
       "field": "command",
       "pattern": "git\\s+(reset\\s+--hard|clean\\s+-[a-z]*f|checkout\\s+--\\s+\\.|restore\\s+--source|branch\\s+-D\\b|push\\s+[^\\n]*--delete)",
       "decision": "ask",
@@ -20,15 +20,23 @@
     },
     {
       "id": "rm-recursive",
-      "tools": "^Bash$",
+      "tools": "^(Bash|PowerShell)$",
       "field": "command",
       "pattern": "\\brm\\s+-[a-z]*(rf|fr)[a-z]*\\s+(?!(\\./)?(node_modules|\\.next|\\.next-[a-z]+|dist|build|coverage|\\.turbo|\\.cache)(/|\\s|$))",
       "decision": "ask",
       "reason": "Cancellazione ricorsiva fuori dalle cartelle di build."
     },
     {
+      "id": "ps-remove-recursive",
+      "tools": "^(PowerShell|Bash)$",
+      "field": "command",
+      "pattern": "\\b(Remove-Item|rm|ri|del|rmdir)\\b[^\\n]*\\s-(Recurse|r)\\b(?![^\\n]*\\b(node_modules|\\.next|dist|build|coverage|\\.turbo|\\.cache)\\b)",
+      "decision": "ask",
+      "reason": "Cancellazione ricorsiva (PowerShell) fuori dalle cartelle di build."
+    },
+    {
       "id": "prod-deploy",
-      "tools": "^Bash$",
+      "tools": "^(Bash|PowerShell)$",
       "field": "command",
       "pattern": "(vercel\\s+(deploy\\s+)?[^\\n]*--prod\\b|vercel\\s+promote|netlify\\s+deploy\\s+[^\\n]*--prod|firebase\\s+deploy|eas\\s+submit|npm\\s+publish|supabase\\s+functions\\s+deploy)",
       "decision": "ask",
@@ -36,7 +44,7 @@
     },
     {
       "id": "infra-destroy",
-      "tools": "^Bash$",
+      "tools": "^(Bash|PowerShell)$",
       "field": "command",
       "pattern": "(terraform\\s+destroy|gh\\s+repo\\s+delete|vercel\\s+(rm|remove)\\b|supabase\\s+projects\\s+delete|stripe\\s+[^\\n]*\\bdelete\\b|docker\\s+system\\s+prune)",
       "decision": "ask",
@@ -44,7 +52,7 @@
     },
     {
       "id": "db-reset",
-      "tools": "^Bash$",
+      "tools": "^(Bash|PowerShell)$",
       "field": "command",
       "pattern": "(supabase\\s+db\\s+(reset|push)|prisma\\s+migrate\\s+reset|prisma\\s+db\\s+push[^\\n]*--accept-data-loss|drizzle-kit\\s+push)",
       "decision": "ask",
@@ -52,7 +60,7 @@
     },
     {
       "id": "sql-destructive",
-      "tools": "^(Bash|mcp__.*(supabase|postgres|sql|neon|prisma|database).*)$",
+      "tools": "^(Bash|PowerShell|mcp__.*(supabase|postgres|sql|neon|prisma|database).*)$",
       "pattern": "(\\bdrop\\s+(table|schema|database|view|function|policy|column|index)\\b|\\btruncate\\b|\\bdelete\\s+from\\s+[\\w\\.\"]+\\s*(;|$|\"|')|\\balter\\s+table\\b[^;]*\\bdrop\\b|\\b(grant|revoke)\\b[^;]*\\b(on|to|from)\\b|\\bdisable\\s+row\\s+level\\s+security\\b|\\bupdate\\s+[\\w\\.\"]+\\s+set\\b(?![^;]*\\bwhere\\b))",
       "decision": "ask",
       "reason": "SQL distruttivo o modifica permessi (DROP, TRUNCATE, DELETE/UPDATE senza WHERE, GRANT/REVOKE, RLS)."
@@ -102,6 +110,14 @@
       "except": "\\.(example|sample|template)$"
     },
     {
+      "id": "env-shell",
+      "tools": "^(Bash|PowerShell)$",
+      "field": "command",
+      "pattern": "(^|[\\s\"'=/\\\\:(])\\.env(\\.(?!(example|sample|template|dist)\\b)[\\w.-]+)?(?=$|[\\s\"';|&)<>])",
+      "decision": "ask",
+      "reason": "Comando di terminale su un file con segreti (.env): lettura, copia o modifica richiedono conferma (prova guidata N2)."
+    },
+    {
       "id": "secret-in-code",
       "tools": "^(Write|Edit|MultiEdit)$",
       "field": "content",
@@ -113,7 +129,7 @@
     },
     {
       "id": "pipe-to-shell",
-      "tools": "^Bash$",
+      "tools": "^(Bash|PowerShell)$",
       "field": "command",
       "pattern": "(curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod)[^|\\n]*\\|\\s*(sh|bash|zsh|iex|invoke-expression|powershell|pwsh|node|python)\\b",
       "decision": "ask",
@@ -121,7 +137,7 @@
     },
     {
       "id": "global-install",
-      "tools": "^Bash$",
+      "tools": "^(Bash|PowerShell)$",
       "field": "command",
       "pattern": "(npm\\s+(i|install)\\s+[^\\n]*(-g|--global)\\b|claude\\s+mcp\\s+add|claude\\s+plugin\\s+(install|marketplace\\s+add)|npx\\s+skills\\s+add|uvx\\s+[a-z])",
       "decision": "ask",
@@ -130,7 +146,7 @@
     {
       "id": "rocket-no-prod-git",
       "agents": "^mds-devops$",
-      "tools": "^Bash$",
+      "tools": "^(Bash|PowerShell)$",
       "field": "command",
       "pattern": "git\\s+(push\\s+[^\\n]*\\b(main|master|production)\\b|merge\\s+[^\\n]*\\b(main|master)\\b)",
       "decision": "ask",

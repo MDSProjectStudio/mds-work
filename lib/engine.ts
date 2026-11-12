@@ -11,9 +11,28 @@ import type { Action, Agent, AgentRole, Approval, DB, ImportInput, LogLevel, Pri
 import { KIND_LABEL, PROJECT_COLORS, ROLES, WORKER_ROLES, coverRole, packsFor, teamFor } from "./skills";
 import { analyzeRequest, detectKind, planFromBlueprint } from "./analyze";
 import { defaultTemplateFor } from "./templates";
+import { stableIdPart } from "./stable";
 
 const DAY = 86_400_000;
-export const uid = (p = "") => p + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 5);
+/**
+ * Identificativi.
+ * - Fuori da withIdSeed(): casuali (come prima).
+ * - Dentro withIdSeed(seed, …): DETERMINISTICI, derivati dal seme (l'identificativo d'azione)
+ *   e da un contatore. Così un ritentativo della stessa azione produce gli stessi id e non crea doppioni.
+ */
+let idSource: ((prefix: string) => string) | null = null;
+export const uid = (p = "") => (idSource ? idSource(p) : p + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 5));
+
+export function withIdSeed<T>(seed: string, fn: () => T): T {
+  const prev = idSource;
+  let n = 0;
+  idSource = (p) => p + stableIdPart(`${seed}#${n++}`);
+  try {
+    return fn();
+  } finally {
+    idSource = prev;
+  }
+}
 const isoDay = (now: number, days: number) => new Date(now + days * DAY).toISOString().slice(0, 10);
 const slug = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
@@ -247,7 +266,17 @@ export function reduce(db: DB, action: Action, now: number): DB {
       db.payments.push({ id: uid("pay_"), projectId: action.projectId, label: action.label.slice(0, 80) || "Pagamento", amount: Math.max(0, action.amount), dueDate: action.dueDate || undefined, status: "due" });
       break;
     }
+    case "setPaymentStatus": {
+      // stato ESPLICITO: ripeterla non cambia nulla (al contrario di markPaid, che inverte)
+      const pay = db.payments.find((x) => x.id === action.id);
+      if (pay && (action.status === "paid" || action.status === "due") && pay.status !== action.status) {
+        pay.status = action.status;
+        pay.paidAt = action.status === "paid" ? now : undefined;
+      }
+      break;
+    }
     case "markPaid": {
+      // compatibilità: inverte lo stato. La dashboard ora usa setPaymentStatus.
       const pay = db.payments.find((x) => x.id === action.id);
       if (pay) {
         pay.status = pay.status === "paid" ? "due" : "paid";

@@ -40,20 +40,21 @@ Apri http://localhost:3000. Al primo avvio vengono creati alcuni progetti demo: 
 
 ## Dati e sicurezza
 
-- I dati sono in `.data/db.json` (escluso da git). Cancellalo per ripartire da zero.
-- Le API della dashboard rispondono **solo da localhost** finché non c'è un login (`lib/server/store.ts`).
+- **Online** (Vercel + Supabase): i dati sono nella tabella `app_state` di Supabase; accesso solo con l'email autorizzata (`MDS_OWNER_EMAIL`).
+- **Offline** (senza chiavi Supabase): i dati sono in `.data/db.json` (escluso da git) e le API rispondono **solo da localhost** (`lib/server/store.ts`).
+- **Backup cifrato** dei dati online (sola lettura, AES-256-GCM, chiave custodita con DPAPI di Windows): `npm run backup`, verifica e prova di ripristino isolata con `npm run backup:verifica -- --app`. Dettagli e custodia della chiave in [docs/fasi/FASE-0.md](docs/fasi/FASE-0.md).
 - Cassaforte: PBKDF2-SHA256 600k iterazioni + AES-256-GCM, tutto nel browser. Sul server finisce solo testo cifrato. **Se perdi la password principale non c'è recupero**: usa "Backup cifrato".
 - Il portale clienti è pubblico ma espone solo nome progetto e cliente. Ha un rate limit (5 richieste / 10 min), un honeypot anti-bot e limiti di lunghezza. Il testo del cliente è trattato come dato, mai come istruzione.
 
-## Prossimi passi (fase 2)
+## Stato e roadmap
 
-- [ ] Login (Supabase Auth) e database Supabase al posto del file JSON
-- [ ] Deploy su Vercel (il portale clienti diventa raggiungibile dai clienti)
-- [ ] Agenti reali con Claude Agent SDK su branch e PR
-- [ ] Ari con risposte generate da Claude
-- [ ] Notifiche Telegram / email
-- [ ] Blueprint in PDF
-- [ ] Ore stimate vs reali, scadenze di domini e piani, budget dei costi AI, avviso se hai troppi progetti in corso
+- [x] Fase 1 — dashboard (progetti, task, incassi, preventivi, pipeline, cassaforte, portale, stanza)
+- [x] Fase 2 — login Supabase, database online, deploy su Vercel
+- [x] Fase 3 — team reale con Claude Code (kit MDS Team v2: Atlas, 12 specialisti, 45 skill, policy, gate, eval)
+- [x] Upgrade, Fase 0 — protezioni fail-closed a due livelli, hook versionati, backup cifrato e ripristino verificato ([rapporto](docs/fasi/FASE-0.md))
+- [ ] Upgrade, Fasi 1–7 — vedi [docs/MDS-UPGRADE-ROADMAP.md](docs/MDS-UPGRADE-ROADMAP.md) (ogni fase parte solo con approvazione)
+
+Idee non ancora pianificate: Ari con risposte generate da Claude, notifiche Telegram/email, blueprint in PDF, ore stimate vs reali, budget dei costi AI.
 
 ## Fase 3 — Team reale con Claude Code
 
@@ -78,9 +79,12 @@ Evoluzione del team (ramo `feat/mds-team-v2`): AGENT → SKILL → TOOL/MCP → 
 - **Tier di modello** FAST / STANDARD / DEEP in `kit/config.json`, senza nomi di modello negli agenti. Per consumare meno: `npm run kit -- installa --risparmio`.
 - **45 skill** condivise in `kit/skills/`.
 - **Sentinel** è un gate obbligatorio: verdetto PASS / PASS_WITH_WARNINGS / FAIL, ciclo di correzione con al massimo 2 ripetizioni.
-- **Policy** (`kit/policies/policies.json`) applicate dall'hook `scripts/mds-guard.mjs`: chiede conferma per operazioni irreversibili, blocca i segreti nel codice.
+- **Protezioni a due livelli** (kit v3):
+  1. regole di permesso **native** di Claude Code nel `.claude/settings.json` di ogni progetto (valgono anche senza hook);
+  2. **guard MDS fail-closed** (`scripts/mds-guard.mjs`, installato con impronte in `~/.claude/mds/bin/v3/`): chiede conferma per operazioni irreversibili, scritture fuori dal progetto e MCP non autorizzati, blocca i segreti nel codice; se non può girare, Claude Code blocca l'azione (`onFailure: "block"`).
+  - Diagnosi: `npm run kit -- doctor "<progetto>"` · rollback della configurazione: `npm run kit -- ripristina "<progetto>"`.
 - **Lezioni strutturate** in `~/.claude/mds/lessons/` e `.mds/lessons/project.yaml`.
 - **Scanner offline** per skill/plugin/MCP di terzi: `npm run kit -- scan <cartella>`.
-- **Eval**: `npm run eval` (lint, policy, gate) · `npm run eval -- report <progetto>` (scorecard dalla telemetria).
+- **Eval**: `npm run eval` (lint, policy, gate, protezioni) · `npm run eval -- report <progetto>` (scorecard dalla telemetria).
 
 Documentazione: [architettura](docs/architecture/mds-team.md) · [piano di upgrade](docs/MDS-UPGRADE-PLAN.md) · [ecosistema](docs/MDS-ECOSYSTEM.md) · [decisioni](docs/decisions/).

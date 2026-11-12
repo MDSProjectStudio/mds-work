@@ -132,6 +132,7 @@ export function Chatbot() {
   const lastNudge = useRef(0);
   const list = useRef<HTMLDivElement>(null);
   const booted = useRef(false);
+  const openRef = useRef(false);
 
   const push = useCallback((m: Omit<Msg, "id" | "at">, notify = true) => {
     setMsgs((prev) => {
@@ -139,47 +140,61 @@ export function Chatbot() {
       store(KEY, next);
       return next;
     });
-    if (notify) setUnread((u) => u + 1);
+    if (notify && !openRef.current) setUnread((u) => u + 1); // a chat aperta i messaggi sono già visti
   }, []);
+  const setOpenState = (next: boolean) => {
+    openRef.current = next;
+    setOpen(next);
+    if (next) setUnread(0);
+  };
 
+  // Le notifiche nascono dai dati che arrivano dal server: gli aggiornamenti della chat vengono
+  // programmati subito dopo il render (asincroni), non eseguiti dentro l'effetto (niente render a cascata).
   // boot: carica la chat, briefing del mattino e riepilogo del venerdì
   useEffect(() => {
     if (!db || booted.current) return;
-    booted.current = true;
-    setMsgs(load<Msg[]>(KEY, []));
-    seen.current = new Set(pendingApprovals(db).map((a) => a.id));
-    const d = today();
-    if (load<string>("mds-brief", "") !== d) {
-      store("mds-brief", d);
-      push(briefing(db));
-    }
-    if (new Date().getDay() === 5 && load<string>("mds-weekly", "") !== d) {
-      store("mds-weekly", d);
-      push({ from: "bot", text: weekly(db) });
-    }
+    const t = setTimeout(() => {
+      if (booted.current) return;
+      booted.current = true;
+      setMsgs(load<Msg[]>(KEY, []));
+      seen.current = new Set(pendingApprovals(db).map((a) => a.id));
+      const d = today();
+      if (load<string>("mds-brief", "") !== d) {
+        store("mds-brief", d);
+        push(briefing(db));
+      }
+      if (new Date().getDay() === 5 && load<string>("mds-weekly", "") !== d) {
+        store("mds-weekly", d);
+        push({ from: "bot", text: weekly(db) });
+      }
+    }, 0);
+    return () => clearTimeout(t);
   }, [db, push]);
 
   // avvisi: nuove approvazioni + promemoria periodici
   useEffect(() => {
     if (!db || !seen.current) return;
-    for (const a of pendingApprovals(db)) {
-      if (seen.current.has(a.id)) continue;
-      seen.current.add(a.id);
-      const p = projectById(db, a.projectId);
-      push({ from: "bot", text: `${a.kind === "error" ? "⚠️ Bug" : "🔔 Serve il tuo ok"} · ${p?.name}\n${a.title}`, links: [{ label: "Decidi ora", href: "/approvals" }] });
-    }
-    const now = Date.now();
-    if (now - lastNudge.current > 20 * 60_000) {
-      const urgent = focusItems(db).filter((f) => f.kind === "task" && /Scad/.test(f.sub));
-      if (lastNudge.current !== 0 && urgent.length) {
-        push({ from: "bot", text: `Promemoria ⏰\n${urgent.slice(0, 3).map((u) => `• ${u.title} (${u.sub.toLowerCase()})`).join("\n")}`, links: [{ label: "Apri Oggi", href: "/" }] });
+    const t = setTimeout(() => {
+      if (!seen.current) return;
+      for (const a of pendingApprovals(db)) {
+        if (seen.current.has(a.id)) continue;
+        seen.current.add(a.id);
+        const p = projectById(db, a.projectId);
+        push({ from: "bot", text: `${a.kind === "error" ? "⚠️ Bug" : "🔔 Serve il tuo ok"} · ${p?.name}\n${a.title}`, links: [{ label: "Decidi ora", href: "/approvals" }] });
       }
-      lastNudge.current = now;
-    }
+      const now = Date.now();
+      if (now - lastNudge.current > 20 * 60_000) {
+        const urgent = focusItems(db).filter((f) => f.kind === "task" && /Scad/.test(f.sub));
+        if (lastNudge.current !== 0 && urgent.length) {
+          push({ from: "bot", text: `Promemoria ⏰\n${urgent.slice(0, 3).map((u) => `• ${u.title} (${u.sub.toLowerCase()})`).join("\n")}`, links: [{ label: "Apri Oggi", href: "/" }] });
+        }
+        lastNudge.current = now;
+      }
+    }, 0);
+    return () => clearTimeout(t);
   }, [db, push]);
 
   useEffect(() => {
-    if (open) setUnread(0);
     list.current?.scrollTo({ top: list.current.scrollHeight, behavior: "smooth" });
   }, [open, msgs.length]);
 
@@ -194,11 +209,11 @@ export function Chatbot() {
   return (
     <>
       <motion.button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpenState(!open)}
         whileHover={{ scale: 1.06 }}
         whileTap={{ scale: 0.95 }}
         className="fixed bottom-5 right-5 z-40 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-500 text-[#03121a] shadow-[0_0_40px_-6px_#22d3ee]"
-        aria-label={open ? "Chiudi assistente" : "Apri assistente Ari"}
+        aria-label={open ? "Chiudi assistente" : unread > 0 ? `${unread} messaggi nuovi: apri assistente Ari` : "Apri assistente Ari"}
       >
         {open ? <X size={22} /> : <Sparkles size={22} />}
         {!open && unread > 0 && (
@@ -240,7 +255,7 @@ export function Chatbot() {
                     {!!m.links?.length && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {m.links.map((l) => (
-                          <Link key={l.href + l.label} href={l.href} onClick={() => setOpen(false)} className="chip !text-neon hover:border-neon/60">
+                          <Link key={l.href + l.label} href={l.href} onClick={() => setOpenState(false)} className="chip !text-neon hover:border-neon/60">
                             {l.label} →
                           </Link>
                         ))}

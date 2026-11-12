@@ -1,0 +1,15 @@
+# MDS Work · Fase 1 · M5 — Dependabot in modalità "solo segnalazioni":
+# nessuna pull request automatica di aggiornamento (limite 0). Gli AVVISI di sicurezza si attivano
+# nelle impostazioni del repository (operazione da approvare); ogni aggiornamento resta una scelta del titolare.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0

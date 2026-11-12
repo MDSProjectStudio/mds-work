@@ -1,0 +1,97 @@
+# MDS Work · Fase 1 · M5 — controlli automatici (CI)
+# Preparato in locale: parte SOLO dopo il push del ramo su GitHub (operazione da approvare).
+# Nessun segreto, nessun collegamento a Supabase o alla produzione: tutte le prove usano dati finti.
+# Azioni e immagine di PostgreSQL fissate per impronta (SHA / digest), non per etichetta.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  # variabili Supabase volutamente VUOTE: l'app gira in modalità offline
+  NEXT_PUBLIC_SUPABASE_URL: ""
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""
+  SUPABASE_SECRET_KEY: ""
+
+jobs:
+  linux:
+    name: Linux · tipi, lint, test, PostgreSQL, browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        # immagine ufficiale PostgreSQL 17.10 (Docker Official Images), fissata per digest
+        image: postgres:17.10@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317
+        env:
+          # contenitore usa-e-getta, raggiungibile solo dal job: non è un segreto
+          POSTGRES_PASSWORD: prova-ci-usa-e-getta
+        ports: ["127.0.0.1:5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Dipendenze (senza script d'installazione)
+        run: npm ci --ignore-scripts
+      - name: Tipi
+        run: node node_modules/typescript/bin/tsc --noEmit -p .
+      - name: ESLint (zero avvisi)
+        run: node node_modules/eslint/bin/eslint.js --max-warnings 0 .
+      - name: Test unitari
+        run: npm run test:unit
+      - name: Prove su PostgreSQL (contenitore locale del job)
+        run: npm run test:pg
+        env:
+          MDS_TEST_PG_HOST: 127.0.0.1
+          MDS_TEST_PG_PORT: "5432"
+          MDS_TEST_PG_USER: postgres
+          MDS_TEST_PG_PASSWORD: prova-ci-usa-e-getta
+      - name: Browser per i test (Chromium di Playwright)
+        run: node node_modules/@playwright/test/cli.js install --with-deps chromium
+      - name: Test dei flussi e accessibilità (offline, dati finti)
+        run: npm run test:e2e
+        env:
+          CI: "1"
+      - name: Rapporto dei test nel browser
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+      - name: Vulnerabilità note delle dipendenze (solo segnalazione)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  windows:
+    name: Windows · eval del kit e PostgreSQL embedded
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Dipendenze (senza script d'installazione)
+        run: npm ci --ignore-scripts
+      - name: Eval del kit (guardiano, gate, protezioni, chiave di prova con DPAPI)
+        run: npm run eval
+      - name: Prove su PostgreSQL embedded (binari ufficiali 17.10, solo 127.0.0.1)
+        run: npm run test:pg

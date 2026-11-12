@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import clsx from "clsx";
 import { ExternalLink, FileText, Plus, Save, Settings2, Sparkles, Trash } from "lucide-react";
 import { useDB } from "@/lib/client";
@@ -19,7 +19,13 @@ const rid = () => Math.random().toString(36).slice(2, 10);
 function StudioModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { db, dispatch } = useDB();
   const [s, setS] = useState(db?.studio);
-  useEffect(() => setS(db?.studio), [open, db?.studio]);
+  // Riempie il modulo all'APERTURA (o all'arrivo dei dati). Prima si riempiva a ogni aggiornamento
+  // automatico (ogni 2 s), cancellando le modifiche in corso.
+  const [filledOpen, setFilledOpen] = useState(false);
+  if (open !== filledOpen && (!open || db?.studio)) {
+    setFilledOpen(open);
+    if (open) setS(db?.studio);
+  }
   if (!s) return null;
   return (
     <Modal open={open} onClose={onClose} title="Dati dello studio" kicker="compaiono sui preventivi">
@@ -43,7 +49,11 @@ function Editor({ draft, onClose }: { draft: Draft; onClose: () => void }) {
   const { db, dispatch } = useDB();
   const [q, setQ] = useState<Draft>(draft);
   const [bpText, setBpText] = useState("");
-  useEffect(() => setQ(draft), [draft]);
+  const [shownDraft, setShownDraft] = useState(draft);
+  if (shownDraft !== draft) {
+    setShownDraft(draft);
+    setQ(draft);
+  }
   if (!db) return null;
   const rate = q.rate ?? db.studio.rate;
   const full = { items: q.items, rate, discount: q.discount ?? 0 };
@@ -166,15 +176,19 @@ export function QuotesView() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [studio, setStudio] = useState(false);
 
-  useEffect(() => {
-    if (!db || draft) return;
-    const leadId = search.get("lead");
-    const projectId = search.get("project");
+  // ?lead=… o ?project=… apre UNA volta un preventivo precompilato (durante il render, senza effetto).
+  // Prima, chiudendo l'editor con il parametro ancora nell'indirizzo, si riapriva a ogni aggiornamento.
+  const leadId = search.get("lead");
+  const projectId = search.get("project");
+  const paramKey = leadId || projectId ? `${leadId}|${projectId}` : null;
+  const [usedParam, setUsedParam] = useState<string | null>(null);
+  if (db && !draft && paramKey && usedParam !== paramKey) {
     const lead = leadId ? db.leads.find((l) => l.id === leadId) : undefined;
     const proj = projectId ? db.projects.find((p) => p.id === projectId) : undefined;
+    setUsedParam(paramKey);
     if (lead) setDraft({ title: `Preventivo per ${lead.company || lead.name}`, client: lead.name, clientEmail: lead.email, kind: lead.kind ?? "website", items: [], leadId: lead.id });
     else if (proj) setDraft({ title: proj.name, client: proj.client, clientEmail: proj.clientEmail, kind: proj.kind, items: proj.blueprint ? estimateQuote(proj.kind, proj.blueprint.text) : [], projectId: proj.id });
-  }, [db, search, draft]);
+  }
 
   if (!db) return <Loading />;
   const quotes = [...db.quotes].sort((a, b) => b.updatedAt - a.updatedAt);

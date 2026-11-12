@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
-import { Bell, FileText, FolderKanban, Handshake, Inbox, KeyRound, Library, LogOut, Menu, Plus, Search, ShieldCheck, Sun, Wallet, X } from "lucide-react";
+import { Bell, FileText, FolderKanban, Handshake, Inbox, KeyRound, Library, LogOut, Menu, Plus, RotateCcw, Search, ShieldCheck, Sun, TriangleAlert, Wallet, X } from "lucide-react";
+import { actionLabel } from "@/lib/action-labels";
 import { authEnabled } from "@/lib/supabase/config";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { useDB } from "@/lib/client";
-import { money, pendingApprovals } from "@/lib/selectors";
-import { ProjectDot } from "./ui";
+import { agentsMode, money, pendingApprovals, signalState, type AgentsMode } from "@/lib/selectors";
+import { ProjectDot, SignalBadge } from "./ui";
 import { Sprite } from "./Sprite";
 import { CommandPalette } from "./CommandPalette";
 import { NewProjectModal } from "./NewProjectModal";
@@ -26,6 +27,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [palette, setPalette] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const pathname = usePathname();
+  // menu mobile accessibile (UX-7): il focus entra nel menu, Esc lo chiude, alla chiusura torna al pulsante
+  const menuBtn = useRef<HTMLButtonElement>(null);
+  const navWasOpen = useRef(false);
+  useEffect(() => {
+    if (navWasOpen.current && !mobileNav) menuBtn.current?.focus();
+    navWasOpen.current = mobileNav;
+  }, [mobileNav]);
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -38,7 +46,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", k);
   }, []);
 
-  useEffect(() => setMobileNav(false), [pathname]);
+  // cambio di pagina → il menu mobile si chiude (aggiornamento durante il render, senza effetto)
+  const [navPath, setNavPath] = useState(pathname);
+  if (navPath !== pathname) {
+    setNavPath(pathname);
+    setMobileNav(false);
+  }
 
   return (
     <UIContext.Provider value={{ openNewProject: () => setNewOpen(true), openPalette: () => setPalette(true), openImport: () => setImportOpen(true) }}>
@@ -48,7 +61,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </aside>
         <AnimatePresence>
           {mobileNav && (
-            <motion.div className="fixed inset-0 z-40 lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div
+              className="fixed inset-0 z-40 lg:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu di navigazione"
+              onKeyDown={(e) => e.key === "Escape" && setMobileNav(false)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileNav(false)} />
               <motion.div className="absolute inset-y-0 left-0 w-[280px] p-3" initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }} transition={{ type: "spring", damping: 28, stiffness: 300 }}>
                 <Sidebar onClose={() => setMobileNav(false)} />
@@ -57,7 +79,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
         </AnimatePresence>
         <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar onMenu={() => setMobileNav(true)} />
+          <Topbar onMenu={() => setMobileNav(true)} menuRef={menuBtn} />
+          <ActionNotices />
           <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-24 pt-2 sm:px-6 lg:px-8">{children}</main>
         </div>
       </div>
@@ -93,7 +116,7 @@ function NavItem({ href, icon, label, badge, badgeColor = "#22d3ee" }: { href: s
 }
 
 function Sidebar({ onClose }: { onClose?: () => void }) {
-  const { db } = useDB();
+  const { db, now } = useDB();
   const pending = db ? pendingApprovals(db).length : 0;
   const late = db ? money(db).lateCount : 0;
   const rooms = db ? db.projects.filter((p) => p.status !== "done") : [];
@@ -110,7 +133,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
           <div className="kicker !text-[9px]">studio · os</div>
         </div>
         {onClose && (
-          <button className="btn btn-sm !p-1.5" onClick={onClose} aria-label="Chiudi menu">
+          <button className="btn btn-sm !p-1.5" onClick={onClose} aria-label="Chiudi menu" autoFocus>
             <X size={15} />
           </button>
         )}
@@ -138,10 +161,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
         <div>
           <div className="kicker flex items-center justify-between px-3 pb-1.5">
             <span>Stanze</span>
-            <span className="flex items-center gap-1.5 normal-case tracking-normal">
-              <span className="led led-pulse text-lime" style={{ width: 5, height: 5 }} />
-              live
-            </span>
+            {db && <SignalBadge state={signalState(db, now)} className="!text-[10px] normal-case tracking-normal" />}
           </div>
           {rooms.map((p) => {
             const busy = db!.agents.filter((a) => a.projectId === p.id && a.status === "working").length;
@@ -174,7 +194,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
           className="mx-2.5 mb-2.5 flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-[12.5px] text-muted transition hover:bg-white/[0.04] hover:text-fg"
           onClick={async () => {
             await supabaseBrowser().auth.signOut();
-            window.location.href = "/login";
+            window.location.assign(new URL("/login", window.location.href).href);
           }}
         >
           <LogOut size={14} /> Esci
@@ -184,7 +204,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
   );
 }
 
-function Topbar({ onMenu }: { onMenu: () => void }) {
+function Topbar({ onMenu, menuRef }: { onMenu: () => void; menuRef: React.RefObject<HTMLButtonElement | null> }) {
   const { db, error } = useDB();
   const { openNewProject, openPalette } = useUI();
   const router = useRouter();
@@ -200,7 +220,7 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
   return (
     <header className="sticky top-0 z-30 px-4 pb-3 pt-3 sm:px-6 lg:px-8">
       <div className="glass flex items-center gap-2 !rounded-2xl px-2.5 py-2 sm:gap-3" style={{ background: "linear-gradient(180deg, rgba(13,19,36,.9), rgba(8,12,24,.88))" }}>
-        <button className="btn btn-sm !p-2 lg:hidden" onClick={onMenu} aria-label="Apri menu">
+        <button ref={menuRef} className="btn btn-sm !p-2 lg:hidden" onClick={onMenu} aria-label="Apri menu">
           <Menu size={16} />
         </button>
         <button onClick={openPalette} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-line bg-black/20 px-3 py-2 text-left text-sm text-muted transition hover:border-line2 sm:max-w-md">
@@ -214,21 +234,89 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
               <span className="led text-rose" style={{ width: 6, height: 6 }} /> offline
             </span>
           ) : (
-            <span className="chip hidden md:inline-flex" title="Fase 1: gli agenti simulano il lavoro. In fase 2 lavorano davvero sui repo.">
-              <span className="led led-pulse text-lime" style={{ width: 6, height: 6 }} /> agenti · simulazione
-            </span>
+            db && <ModeChip mode={agentsMode(db)} />
           )}
           <span className="mono hidden text-xs text-muted sm:inline">{clock}</span>
-          <button className="btn btn-sm relative !p-2" onClick={() => router.push("/approvals")} aria-label="Approvazioni in attesa">
+          <button className="btn btn-sm relative !p-2" onClick={() => router.push("/approvals")} aria-label={pending > 0 ? `${pending} approvazioni in attesa` : "Approvazioni in attesa"}>
             <Bell size={16} />
             {pending > 0 && <span className="mono absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-amber px-1 text-[9.5px] font-bold text-black">{pending}</span>}
           </button>
-          <button className="btn btn-primary btn-sm" onClick={openNewProject}>
+          <button className="btn btn-primary btn-sm" onClick={openNewProject} aria-label="Nuovo progetto">
             <Plus size={15} />
             <span className="hidden sm:inline">Nuovo progetto</span>
           </button>
         </div>
       </div>
     </header>
+  );
+}
+
+/** Modalità REALE degli agenti sui progetti aperti (UX-1): team reale, simulazione o misto. */
+function ModeChip({ mode }: { mode: AgentsMode }) {
+  const meta = {
+    real: { text: "agenti · team reale", title: "Tutti i progetti aperti lavorano con il team reale (Claude Code sul tuo PC).", color: "text-lime" },
+    sim: { text: "agenti · simulazione", title: "Tutti i progetti aperti sono in simulazione: nessun lavoro vero.", color: "text-amber" },
+    mixed: { text: `agenti · misto (${mode.real} reali, ${mode.sim} simulati)`, title: "Alcuni progetti usano il team reale, altri la simulazione: lo vedi in ogni progetto.", color: "text-neon" },
+    none: { text: "agenti · nessun progetto aperto", title: "Nessun progetto aperto.", color: "text-muted" },
+  }[mode.kind];
+  return (
+    <span className="chip hidden md:inline-flex" title={meta.title}>
+      <span className={clsx("led", meta.color)} style={{ width: 6, height: 6 }} aria-hidden /> {meta.text}
+    </span>
+  );
+}
+
+/**
+ * Avvisi delle operazioni (Fase 1 · M2):
+ * - esito NON confermato: resta visibile finché un nuovo invio non lo risolve (l'aggiornamento automatico non lo toglie);
+ *   "Riprova" usa lo stesso identificativo, quindi l'operazione non viene mai duplicata;
+ * - rifiuto: resta finché non lo chiudi o la prossima operazione riesce.
+ */
+function ActionNotices() {
+  const { uncertain, retryUncertain, actionError, clearActionError } = useDB();
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!uncertain.length && !actionError) return null;
+  return (
+    <div className="space-y-2 px-4 pb-2 sm:px-6 lg:px-8">
+      {uncertain.length > 0 && (
+        <div role="status" aria-live="polite" className="glass flex gap-3 !rounded-2xl border border-amber/40 px-4 py-3 text-sm">
+          <TriangleAlert size={16} className="mt-0.5 flex-none text-amber" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">{uncertain.length === 1 ? "1 operazione con esito non confermato" : `${uncertain.length} operazioni con esito non confermato`}</div>
+            <div className="text-xs text-muted">Potrebbero essere già state salvate. Riprova: non verranno duplicate.</div>
+            <ul className="mt-2 space-y-1.5">
+              {uncertain.map((u) => (
+                <li key={u.key} className="flex items-center gap-2 text-xs">
+                  <span className="min-w-0 flex-1 truncate">{actionLabel(u.op)}</span>
+                  <button
+                    className="btn btn-sm"
+                    disabled={busy === u.key}
+                    onClick={async () => {
+                      setBusy(u.key);
+                      try {
+                        await retryUncertain(u.key);
+                      } finally {
+                        setBusy(null);
+                      }
+                    }}
+                  >
+                    <RotateCcw size={13} aria-hidden /> {busy === u.key ? "Invio…" : "Riprova"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {actionError && (
+        <div role="alert" className="glass flex items-center gap-3 !rounded-2xl border border-rose/40 px-4 py-2.5 text-sm">
+          <TriangleAlert size={16} className="flex-none text-rose" aria-hidden />
+          <span className="min-w-0 flex-1">{actionError}</span>
+          <button className="btn btn-sm !p-1.5" onClick={clearActionError} aria-label="Chiudi avviso">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

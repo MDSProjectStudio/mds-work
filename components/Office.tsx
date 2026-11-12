@@ -1,12 +1,12 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+
 import clsx from "clsx";
 import { Sparkles, X } from "lucide-react";
 import { useDB } from "@/lib/client";
 import { ROLES, packsForAgent } from "@/lib/skills";
-import { pendingApprovals, progressOf } from "@/lib/selectors";
+import { pendingApprovals, progressOf, signalState } from "@/lib/selectors";
 import type { Agent, AgentRole, Project, TaskStatus } from "@/lib/types";
 import { Sprite } from "./Sprite";
 import { elapsed } from "./LiveActivity";
@@ -70,10 +70,11 @@ function Desk({ a, x, y, now, selected, onClick }: { a: Agent; x: number; y: num
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4 }}
-      aria-label={`${r.name}, ${r.label}: ${a.thought}`}
     >
+      {/* nome accessibile: testo per i lettori di schermo; la grafica qui sotto è decorativa */}
+      <span className="sr-only">{`${r.name}, ${r.label}: ${a.thought}`}</span>
       {/* fumetto */}
-      <div className="flex h-[50px] items-end">
+      <div className="flex h-[50px] items-end" aria-hidden>
         <AnimatePresence mode="wait">
           {showBubble && (
             <motion.div
@@ -92,7 +93,7 @@ function Desk({ a, x, y, now, selected, onClick }: { a: Agent; x: number; y: num
       </div>
 
       {/* scrivania */}
-      <div className={clsx("relative transition-transform group-hover:-translate-y-0.5", chief ? "h-[88px] w-[190px]" : "h-[80px] w-[160px]")}>
+      <div aria-hidden className={clsx("relative transition-transform group-hover:-translate-y-0.5", chief ? "h-[88px] w-[190px]" : "h-[80px] w-[160px]")}>
         <div className="absolute bottom-[14px] left-1/2 h-10 w-[90%] -translate-x-1/2 rounded-full blur-xl" style={{ background: r.color + (a.status === "working" ? "40" : "18") }} />
         {/* monitor */}
         <div className="absolute bottom-[22px] right-[12px] flex flex-col items-center">
@@ -137,9 +138,9 @@ function Plant({ className }: { className?: string }) {
 
 export function Office({ project, selected, onSelect }: { project: Project; selected?: string; onSelect: (id: string) => void }) {
   const { db, now } = useDB();
-  const [clock, setClock] = useState("");
-  useEffect(() => setClock(new Date(now).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })), [now]);
   if (!db) return null;
+  // calcolato in render: il componente appare solo nel browser, a dati caricati (nessuna differenza server/client)
+  const clock = new Date(now).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
   const agents = db.agents.filter((a) => a.projectId === project.id);
   const { sorted, pos } = layout(agents);
   const tasks = db.tasks.filter((t) => t.projectId === project.id);
@@ -189,7 +190,14 @@ export function Office({ project, selected, onSelect }: { project: Project; sele
           {/* orologio */}
           <div className="absolute right-[3%] top-[16%] flex h-[68%] w-[18%] flex-col justify-center rounded-lg border border-line2 bg-[#0b1222]/90 px-3">
             <div className="flex items-center gap-1.5 text-[9px] font-semibold tracking-widest text-rose">
-              <span className="led led-pulse" style={{ width: 5, height: 5 }} /> LIVE
+              {(() => {
+                const sig = signalState(db!, now, project.id);
+                return (
+                  <>
+                    <span className={sig.kind === "live" ? "led led-pulse" : "led"} style={{ width: 5, height: 5 }} aria-hidden /> {sig.short.toUpperCase()}
+                  </>
+                );
+              })()}
             </div>
             <div className="mono text-xl font-semibold">{clock}</div>
             <div className="mono text-[9px] text-muted">{agents.length} agenti in stanza</div>

@@ -11,7 +11,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dashboardRole, ROLE_NAMES, supabase } from "./lib-supabase.mjs";
 
 const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|astro|css|scss|sass|less|html|py|go|rs|java|kt|cs|php|rb|swift|dart|sql|lua|gd|gdscript|luau|prisma)$/i;
@@ -157,6 +157,47 @@ export function lastAgentMessage(transcriptPath) {
   return "";
 }
 
+/**
+ * All'avvio della sessione: il guard indicato nelle impostazioni del progetto esiste ed è integro?
+ * Ritorna l'elenco dei problemi (vuoto = tutto a posto). Non blocca mai.
+ */
+export async function checkProtections(root) {
+  const problems = [];
+  try {
+    const s = readJSON(path.join(root, ".claude", "settings.json"), {});
+    const fileOf = (h) => h.args?.[0] ?? String(h.command ?? "").match(/"([^"]+\.m?js)"/)?.[1] ?? null;
+    // ogni hook configurato deve puntare a un file esistente (qualunque nome abbia)
+    for (const g of Object.values(s.hooks ?? {}).flat()) {
+      for (const h of g.hooks ?? []) {
+        const f = fileOf(h);
+        if (f && /\.m?js$/.test(f) && !fs.existsSync(f)) problems.push(`hook mancante: ${f}`);
+      }
+    }
+    // deve esistere il guard sugli strumenti sensibili, fail-closed
+    const sensitive = (s.hooks?.PreToolUse ?? []).find((g) => /Bash/.test(g.matcher ?? "") && /Write/.test(g.matcher ?? "") && /mcp__/.test(g.matcher ?? ""));
+    if (!sensitive) problems.push("guard non configurato sugli strumenti sensibili");
+    else if (!(sensitive.hooks ?? []).some((h) => h.onFailure === "block")) problems.push("guard non fail-closed (manca onFailure: block)");
+    // regole e integrità, lette con il guard installato (se esiste)
+    const guardFile = [...(s.hooks?.PreToolUse ?? []).flatMap((g) => g.hooks ?? []).map(fileOf)].find((f) => f && /mds-guard\.mjs$/.test(f) && fs.existsSync(f));
+    if (guardFile) {
+      const { loadPolicies, readProject, isInstalledBinDir } = await import(pathToFileURL(guardFile).href);
+      problems.push(...loadPolicies(root, { manifestDir: path.dirname(guardFile) }).problems);
+      // installazione v3: la configurazione del progetto deve essere leggibile e completa
+      if (isInstalledBinDir(path.dirname(guardFile))) {
+        const pj = readProject(root);
+        if (pj._status !== "ok") problems.push(`configurazione del progetto ${pj._status === "corrupt" ? "illeggibile" : "assente"} (.mds/project.json)`);
+        else {
+          if (!(Number(pj.kitVersion) >= 3)) problems.push(`configurazione del progetto incoerente (kitVersion ${pj.kitVersion ?? "assente"} con hook v3)`);
+          if (!Array.isArray(pj.mcp?.allow)) problems.push("elenco MCP autorizzati assente (mcp.allow)");
+        }
+      }
+    }
+  } catch (e) {
+    problems.push(`verifica non riuscita (${String(e?.message ?? e).slice(0, 80)})`);
+  }
+  return [...new Set(problems)];
+}
+
 /** Logica pura: aggiorna la sessione e decide output/eventi. Esportata per le eval. */
 export function handle(input, session, ctx = {}) {
   const now = ctx.now ?? Date.now();
@@ -173,7 +214,14 @@ export function handle(input, session, ctx = {}) {
     out.session = { startedAt: now, edits: 0, agents: [], corrections: 0 };
     add("chief", "idle", "Sessione Claude Code aperta sul progetto");
     tele({});
-    if (ctx.taskInProgress) out.stdout = `MDS: c'è un task in corso (${ctx.taskInProgress}). Prima di continuare segui la skill mds-stato: leggi .mds/state/current-task.json e progress.md, controlla git status/diff/log ed esegui un sanity test.`;
+    const notes = [];
+    if (ctx.protectionProblems?.length) {
+      notes.push(`MDS ATTENZIONE: le protezioni del progetto non sono integre (${ctx.protectionProblems.join("; ")}). Dillo SUBITO al titolare in italiano semplice e chiedigli di eseguire "npm run kit -- doctor" nella cartella MDS Work. Finché non è risolto, le azioni sensibili richiedono conferma o vengono bloccate.`);
+      add("chief", "waiting", "Protezioni MDS non integre: serve npm run kit -- doctor", "error");
+      tele({ protections: "ko", problems: ctx.protectionProblems.length });
+    }
+    if (ctx.taskInProgress) notes.push(`MDS: c'è un task in corso (${ctx.taskInProgress}). Prima di continuare segui la skill mds-stato: leggi .mds/state/current-task.json e progress.md, controlla git status/diff/log ed esegui un sanity test.`);
+    if (notes.length) out.stdout = notes.join("\n\n");
   } else if (ev === "UserPromptSubmit" && /^\s*Another Claude session sent a message|<agent-message\b|\[Subagent hand-back\]/i.test(String(input.prompt ?? ""))) {
     // Non è il titolare: è il rapporto finale di un agente in sottofondo che torna ad Atlas.
     const text = String(input.prompt);
@@ -314,7 +362,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const taskInProgress = task && !["done", "abandoned"].includes(task.status) ? `${task.id ?? ""} ${task.title ?? ""}`.trim() : null;
       const lastMessage =
         input.hook_event_name === "SubagentStop" && !input.last_assistant_message && input.agent_transcript_path ? lastAgentMessage(input.agent_transcript_path) : undefined;
-      const res = handle(input, readJSON(sessionPath, {}), { root: proj.root, taskInProgress, lastMessage });
+      const protectionProblems = input.hook_event_name === "SessionStart" ? await checkProtections(proj.root) : [];
+      const res = handle(input, readJSON(sessionPath, {}), { root: proj.root, taskInProgress, lastMessage, protectionProblems });
       writeJSON(sessionPath, res.session);
       if (res.telemetry.length) {
         const tdir = path.join(proj.root, ".mds", "telemetry");

@@ -74,9 +74,11 @@ export function ApprovalCard({ a, compact, showProject = true }: { a: Approval; 
                 </li>
               ))}
               {items.length > shown.length && (
-                <button className="text-[12px] text-neon hover:underline" onClick={() => setAll(true)}>
-                  + altri {items.length - shown.length}
-                </button>
+                <li>
+                  <button className="text-[12px] text-neon hover:underline" onClick={() => setAll(true)}>
+                    + altri {items.length - shown.length}
+                  </button>
+                </li>
               )}
             </ul>
           )}

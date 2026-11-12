@@ -32,7 +32,7 @@ export default function LoginPage() {
     try {
       const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json());
       if (me.ok) {
-        window.location.href = "/";
+        window.location.assign(new URL("/", window.location.href).href); // ricarica completa: la sessione appena creata vale per tutta l'app
         return;
       }
       setErr(REASONS[me.reason as string] ?? `Accesso non riuscito (${me.reason})`);
