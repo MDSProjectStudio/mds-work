@@ -246,7 +246,7 @@ select c.relname, c.relacl from pg_class c where c.relnamespace = 'public'::regn
 
 Passi (ognuno con il tuo consenso al momento):
 1. **Prerequisiti:** §6.0 e §6.4 superati e annotati; backup + verifica (`npm run backup`, `npm run backup:verifica -- --app`). Nessuno usa `npm run dev` con le chiavi reali.
-2. **Migrazioni**, SQL Editor, in ordine: [20261110_m2_concorrenza.sql](../../supabase/migrations/20261110_m2_concorrenza.sql), [20261111_m3_portale.sql](../../supabase/migrations/20261111_m3_portale.sql), [20261112_m6_errori.sql](../../supabase/migrations/20261112_m6_errori.sql).
+2. **Migrazioni**, SQL Editor, in ordine: [20261110_m2_concorrenza.sql](../../supabase/migrations/20261110_m2_concorrenza.sql), [20261111_m3_portale.sql](../../supabase/migrations/20261111_m3_portale.sql), [20261112_m6_errori.sql](../../supabase/migrations/20261112_m6_errori.sql) e, indipendente dalle altre, [20261113_permessi_preesistenti.sql](../../supabase/migrations/20261113_permessi_preesistenti.sql) (revoca dei privilegi di anon e authenticated sulle tabelle e sequenze già esistenti, con rollback esatto).
 3. **Controllo dello stato:** `select legacy_writes, new_writes from public.app_config;` deve dare `allow | block`. Se `new_writes` non è `block`, **ci si ferma**. Verificare che la dashboard attuale funzioni e che la versione salga.
 4. **Manutenzione:** chiudere tutte le schede su ogni dispositivo, fermare il motore su ogni PC, poi `select public.set_write_mode('block', 'block');`. La funzione attende le scritture in corso. Verificare `block | block`.
 5. **Cambio di codice:** merge su `main`. Attendere che il deploy di produzione sia **"Ready"** e attivo. Durante questo passo nessuno scrive (manutenzione), quindi l'ordine fra istanze vecchie e nuove non conta.
@@ -256,7 +256,7 @@ Passi (ognuno con il tuo consenso al momento):
 
 Se un controllo dei passi 3, 4 o 6 non dà il valore atteso: **non si prosegue**, si resta in manutenzione e si valuta il rollback.
 
-Rollback: [FASE-1-M2.md](FASE-1-M2.md) §7 (manutenzione → codice precedente → riapertura controllata solo al vecchio: `block/allow` diventa `allow/block`), poi le migrazioni inverse in ordine inverso: M6 → M3 (prima importare le richieste `new`) → M2. Le impostazioni di Vercel del §6.0 **restano come sono**: sono sicure anche con il codice vecchio. Le annotazioni servono solo se vuoi ripristinarle.
+Rollback: [FASE-1-M2.md](FASE-1-M2.md) §7 (manutenzione → codice precedente → riapertura controllata solo al vecchio: `block/allow` diventa `allow/block`), poi le migrazioni inverse in ordine inverso: permessi → M6 → M3 (prima importare le richieste `new`) → M2. Le impostazioni di Vercel del §6.0 **restano come sono**: sono sicure anche con il codice vecchio. Le annotazioni servono solo se vuoi ripristinarle.
 
 **6.6 — Impostazioni GitHub (protezione di `main`)**, da Settings → Branches → regola per `main`:
 - richiedere una pull request prima del merge;
@@ -321,3 +321,57 @@ Prima di qualsiasi push, sul materiale che diventerebbe pubblico (il repository 
 - **Dati personali:** il nome utente di Windows e l'impronta della chiave dei backup comparivano in `docs/fasi/FASE-0*.md` (storia compresa). Rimossi.
 - **Storia riscritta (locale, mai pubblicata).** Per farlo ho riscritto i 18 commit del ramo, quindi **gli identificativi dei commit sono cambiati**: i riferimenti nei documenti sono stati aggiornati (nessuna differenza di contenuto, a parte i tre file ripuliti). La storia originale è conservata solo in locale nel ramo `backup/prima-della-pubblicazione-801ae85`, che **non va pubblicato** perché contiene i dati rimossi. `main` e il tag `baseline-2026-11-09` non sono toccati.
 - **Verifica da clone pulito** del commit candidato: installazione da lockfile, tipi, ESLint a zero avvisi, 72 test unitari, 86 prove PostgreSQL, eval del kit: tutti superati (Windows, locale).
+
+---
+
+## 10. Esiti del blocco di prove (12/11/2026)
+
+Tutte le prove sono state eseguite su un progetto Supabase **di prova** (`mds-work-prova-fase1`, piano Free, regione Europa, creato il 12/11), con dati e utenti finti e con le sue chiavi in un file fuori dal repository (`MDS_ENV_FILE`). `.env.local` non è stato letto né modificato.
+
+### Lettura della produzione (solo metadati, §6.3)
+- **Versione:** PostgreSQL **17.11** (le prove locali usano 17.10).
+- **Schema:** 3 tabelle (`agent_events`, `app_state`, `launch_requests`), RLS attiva, **nessuna policy**, nessun trigger né funzione propria.
+- **Privilegi:** i privilegi predefiniti di Supabase danno ad `anon` e `authenticated` **tutti** i privilegi su tabelle e sequenze (compreso `TRUNCATE`). Coincide con la simulazione dei test, quindi la revoca è fondata. Preparata la migrazione `20261113_permessi_preesistenti.sql` con rollback **esatto** (provato su PostgreSQL locale e sul progetto di prova).
+
+### Prove A–I
+| # | Prova | Esito | Evidenza |
+|---|---|---|---|
+| A | Migrazioni su dati scritti dal codice vecchio | **superata** | M2, M3, M6 e permessi applicate dal SQL Editor; dati identici, interruttori `allow/block`, riapplicazione idempotente, script inversi provati |
+| B | API reali con la chiave segreta | **superata** (12/12 e 23/23, quest'ultima per due esecuzioni) | tutti gli esiti delle funzioni, tipi corretti, atomicità, avvii senza doppioni, limite del portale; **20 richieste HTTP contemporanee con la stessa versione: ne vince 1, 19 conflitti**; 10 invii contemporanei dello stesso indirizzo: 5 accettati |
+| C | Permessi con la chiave pubblica | **superata** | prima della revoca 19/19 (privilegi residui dimostrati), dopo 16/16: nessuna tabella, funzione né `set_write_mode` accessibile; rollback esatto 19/19 |
+| D | Login (Supabase Auth) | **NON PROVATA** | richiede due utenti e un accesso con password: le password le digita il titolare (vedi §11) |
+| E | Flussi nel browser con login | **NON PROVATA** | dipende da D |
+| F | Codice vecchio sul database migrato | **superata, con una precisazione** | eseguita con le **stesse chiamate di supabase-js del vecchio codice** (upsert cieco di `app_state`, INSERT in `launch_requests`, UPDATE diretto): funziona in `allow/block`, rifiutata con errore visibile in `block/block` e `block/allow`. **Non** è stata eseguita la build intera di `main` (richiederebbe il login, come D) |
+| G | Passaggio completo e rollback | **superata** | manutenzione 8/8 (due volte), solo nuovo 23/23, ritorno al vecchio 5/5, script inversi 8/8, riapplicazione (la modalità conservata resta `allow/block`: il nuovo non si riapre da solo), di nuovo solo nuovo 23/23. A ogni passo `app_config` è stato letto: **mai entrambi i percorsi aperti** |
+| H | Motore e backup | **superata** | 2 motori in parallelo su 4 richieste: ciascuna presa una sola volta; backup con tutte e 8 le tabelle; ripristino con dashboard offline superato; backup pianificato ×3 con rotazione (ne restano 2), backup manuale intatto, nessuna chiave nuova se manca quella esistente |
+| I | Anteprima senza isolamento | **superata** | l'anteprima Vercel (`6c1f4c3`) risponde 403 su `/api/state`, `/api/action`, `/api/errors` e non si collega ad alcun database; nei log API della produzione **nessuna richiesta** dopo il push |
+
+### Isolamento Vercel (§6.0): verificato, nessuna modifica necessaria
+Letto dal pannello (configurazione salvata fuori dal repository): ramo di produzione `main`; tutte le 16 variabili d'ambiente valgono **solo per Production**; nessuna anteprima prima di questo push; protezione "Standard" attiva sulle anteprime; `VERCEL_ENV` esposta (quindi il blocco nel codice funziona). Il ramo di prova non pubblica in produzione.
+
+### CI su GitHub (§6.1–6.2)
+Primo push: **Linux fallito**, Windows verde. Causa reale: il controllo dei tipi di `next build` includeva l'import di un pacchetto PostgreSQL **solo Windows**, assente su Linux. Questo avrebbe fatto fallire **anche il build di produzione al merge**. Corretto (`6c1f4c3`). Dopo la correzione: **Linux verde (3,5 min) e Windows verde (1,3 min)**, compresi i test PostgreSQL su contenitore `postgres:17.10` e su binari embedded, i test nel browser e l'accessibilità. Anteprima Vercel **Ready**.
+
+### Protezioni GitHub (§6.6): applicate
+- `main`: pull request obbligatoria (0 approvazioni, nessun revisore esterno), controlli **"Linux · tipi, lint, test, PostgreSQL, browser"** e **"Windows · eval del kit e PostgreSQL embedded"** obbligatori, nessun push forzato, nessuna cancellazione, regola valida **anche per l'amministratore**.
+- Dependabot alerts e Dependency graph attivi; secret scanning e push protection già attivi; nessuna pull request automatica (security updates spenti).
+- **Per modificare la regola in caso di emergenza:** Settings → Branches → regola `main`.
+
+### Incidenti e difetti emersi (tutti risolti o dichiarati)
+1. **Build Linux/Vercel fallito** (sopra): corretto.
+2. **Mio errore:** salvando un percorso di prova nello stato di prova le barre rovesciate sono andate perse; il motore l'ha letto come percorso relativo, ha creato una cartella **dentro il repository** e ha lasciato `/mds-team` negli appunti. Controllato che non fosse stato toccato altro (kit dell'utente e `.claude` intatti), cartella rimossa. La prova è stata ripetuta con un percorso assoluto su un'unità inesistente.
+3. **Mio errore:** una diagnostica ha stampato la parte finale della chiave segreta del progetto **di prova**. Non è produzione, ma è da considerare esposta: **va sostituita (o il progetto eliminato) a fine prove** (§11).
+4. Difetti dei miei test corretti (filtri di tabella non validi, precondizioni, indirizzi riutilizzati): nessuno era un difetto dell'applicazione.
+5. `tsconfig.json`: Next.js aggiunge da solo i percorsi delle build di prova; riportato a quello di `main`.
+
+### Costi verificati (12/11/2026)
+- **GitHub:** repository pubblico, Actions gratuite; piano Free. Nessun costo.
+- **Vercel:** piano **Hobby** ("Upgrade to Pro"); uso degli ultimi 30 giorni: CPU attiva 7 min su 4 h, 23 K chiamate su 1 M, banda dati 139 MB su 10 GB. Nessun costo. Resta valida l'avvertenza: la pagina ufficiale riserva Hobby all'uso personale e non commerciale.
+- **Supabase:** organizzazione piano **Free**; produzione `mds-work`: database **27 MB su 500 MB**, 2 utenti attivi su 50.000; **ora 2 progetti su 2** consentiti (produzione e prova). Nessun costo. Con 2 su 2 **non si può creare un altro progetto Free** finché la prova non viene eliminata o messa in pausa.
+
+---
+
+## 11. Cosa resta da fare (richiede il titolare)
+1. **Prove D ed E (login e flussi):** servono due utenti di prova creati nel progetto di prova e l'accesso con password **digitato da te** nel browser (io non inserisco password). Procedura nel riepilogo di consegna.
+2. **A fine prove:** sostituire la chiave segreta del progetto di prova (Settings, API Keys) oppure eliminare il progetto, e decidere se tenerlo per le prove future (occupa 1 dei 2 posti Free; se resta inattivo viene messo in pausa dopo 1 settimana).
+3. **Approvazione finale al rilascio** (§6.5), con tutte le operazioni sul database di produzione: backup, migrazioni, manutenzione, merge, apertura, verifica.
