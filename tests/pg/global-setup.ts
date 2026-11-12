@@ -60,7 +60,10 @@ export default async function setup(project: TestProject) {
     return;
   }
   if (process.platform !== "win32") throw new Error("Senza MDS_TEST_PG_HOST le prove usano i binari PostgreSQL per Windows");
-  const { initdb, pg_ctl } = (await import("@embedded-postgres/windows-x64")) as { initdb: string; pg_ctl: string };
+  // Pacchetto SOLO Windows (dipendenza opzionale): su Linux non è installato. Il nome sta in una variabile perché
+  // il controllo dei tipi di `next build` (che include tests/) non deve cercare un modulo assente su Linux e fallire.
+  const pacchetto = "@embedded-postgres/windows-x64";
+  const { initdb, pg_ctl } = (await import(/* @vite-ignore */ pacchetto)) as { initdb: string; pg_ctl: string };
 
   const dir = mkdtempSync(path.join(os.tmpdir(), "mds-pg-prova-"));
   const data = path.join(dir, "data");
