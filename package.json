@@ -16,7 +16,8 @@
     "prova:isolata": "node scripts/prova-isolata.mjs",
     "test:unit": "node node_modules/vitest/vitest.mjs run",
     "test:pg": "node node_modules/vitest/vitest.mjs run --config vitest.pg.config.ts",
-    "test:e2e": "node node_modules/@playwright/test/cli.js test"
+    "test:e2e": "node node_modules/@playwright/test/cli.js test",
+    "prova:supabase": "node tests/isolato/prova-api-supabase.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
